@@ -1,0 +1,1 @@
+{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"C:/Program Files/Git/bin/bash.exe","args":["${CLAUDE_PROJECT_DIR}/referree.sh"],"timeout":300}]}],"SubagentStop":[{"matcher":"^(data|taste|ui)$","hooks":[{"type":"command","command":"C:/Program Files/Git/bin/bash.exe","args":["${CLAUDE_PROJECT_DIR}/referree.sh"],"timeout":300}]}]}}

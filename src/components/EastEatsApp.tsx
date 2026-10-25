@@ -6,7 +6,7 @@ import type { DiscoverInput, DiscoverResponse, Favorite, Location, RankedRestaur
 import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, parseDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
 
 const RestaurantMap = dynamic(() => import('./RestaurantMap'), { ssr: false, loading: () => <div className="empty">Loading map…</div> });
-type Session = { user: { id: string; email?: string } | null; configured: boolean; demo: boolean; dataMode: 'live' | 'demo'; profile: TasteProfile | null; answers: TasteInput | null };
+type Session = { user: { id: string; email?: string } | null; configured: boolean; demo: boolean; dataMode: 'live' | 'demo'; profile: TasteProfile | null; answers: TasteInput | null; personalized?:boolean; warning?:string };
 type Stage = 'loading' | 'login' | 'questionnaire' | 'interpretation' | 'location' | 'explore' | 'saved';
 const BAY_AREAS = [{ label: 'Berkeley', lat: 37.8715, lng: -122.273 }, { label: 'Oakland', lat: 37.8044, lng: -122.2712 }, { label: 'San Francisco', lat: 37.7749, lng: -122.4194 }];
 
@@ -97,7 +97,7 @@ export default function EastEatsApp() {
     try {
       const data = await request<Session>('/api/session');
       if (!mounted.current) return;
-      setSession(data); setProfile(data.profile);
+      setSession(data); setProfile(data.profile); setPersonalized(data.personalized ?? true); if(data.warning)setNotice(data.warning);
       const draft = data.user ? parseDraft(localStorage.getItem(`east-eats:taste:${data.user.id}`)) : null;
       setFavorites(draft ?? data.answers?.favorites ?? []); setDraftReady(true);
       setStage(!data.user ? 'login' : data.profile ? 'location' : 'questionnaire');
@@ -152,6 +152,8 @@ export default function EastEatsApp() {
         if (data.job.status === 'succeeded') { setJob(null); await refreshRef.current(); return; }
         if (!['queued', 'running'].includes(data.job.status)) { setJob(null); setNotice(data.job.status === 'budget_limited' ? 'Live refreshes are paused. You can keep browsing saved results.' : 'The refresh did not finish. Your existing results are still available.'); return; }
         polls += 1;
+        // Offer partial results while a cold-area scrape is still being enriched.
+        if (polls % 3 === 0) await refreshRef.current();
         if (polls >= 20) { setJob(null); setNotice('This refresh is taking longer than expected. Try searching again in a little while.'); return; }
         timer = setTimeout(poll, 3000);
       } catch { if (!cancelled) { setJob(null); setNotice('We could not check the refresh. Please try again later.'); } }

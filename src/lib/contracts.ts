@@ -21,4 +21,4 @@ export interface RankedRestaurant { restaurant: Restaurant; score: number; dista
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'budget_limited' | 'uncertain';
 export interface RefreshJob { id: string; status: JobState; kind: 'discovery' | 'details' | 'favorite-search'; createdAt: string; error?: string }
 export interface Review { id: string; text: string; stars: number | null; publishedAt: string | null; sourceUrl: string }
-export interface DiscoverResponse { items: RankedRestaurant[]; job: RefreshJob | null; profileVersion: number; dataMode: 'live' | 'demo'; refreshing: boolean }
+export interface DiscoverResponse { items: RankedRestaurant[]; job: RefreshJob | null; profileVersion: number; dataMode: 'live' | 'demo'; refreshing: boolean; warning?: string }

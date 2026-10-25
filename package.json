@@ -2,6 +2,7 @@
   "name": "easteats",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,7 +14,11 @@
     "verify:ui": "node scripts/verify.mjs ui",
     "verify:integration": "node scripts/verify.mjs integration",
     "test:e2e": "playwright test",
-    "smoke:live": "node --env-file=.env.local scripts/smoke-live.mjs"
+    "smoke:live": "node --import tsx scripts/smoke-live.mjs",
+    "setup:check": "node scripts/check-setup.mjs --generate-secrets",
+    "worker:once": "node --import tsx scripts/worker.ts",
+    "worker": "node --import tsx scripts/worker.ts --loop",
+    "secrets:check": "node scripts/secret-scan.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",
