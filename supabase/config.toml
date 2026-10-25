@@ -2,7 +2,15 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "east-eats-data"
+project_id = "easteats"
+
+[functions.refresh-worker]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.apify-webhook]
+verify_jwt = false
+import_map = "./functions/import_map.json"
 
 [api]
 enabled = true

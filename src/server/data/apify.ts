@@ -10,6 +10,7 @@ export function buildActorInput(input: ScrapeInput): Record<string, unknown> {
   const query = input.query?.trim() || 'East Asian restaurant';
   if (query.length > 200) throw new Error('Search query is too long');
   if (input.city?.trim()) return { ...common, searchStringsArray: [query], locationQuery: input.city.trim().slice(0, 150) };
+  if (input.query?.trim() && input.lat === undefined && input.lng === undefined) return { ...common, searchStringsArray: [query] };
   if (!Number.isFinite(input.lat) || !Number.isFinite(input.lng) || Math.abs(input.lat!) > 90 || Math.abs(input.lng!) > 180) throw new Error('A city or valid coordinates are required');
   const lat = input.lat!, lng = input.lng!, radius = Math.max(.5, Math.min(50, input.radiusKm ?? 5));
   const dLat = radius / 111.32, dLng = radius / (111.32 * Math.max(.01, Math.cos(lat * Math.PI / 180)));
@@ -24,10 +25,10 @@ export class ApifyClient {
     if (!res.ok) throw new Error(`Apify request failed (${res.status})`);
     return await res.json() as T;
   }
-  async start(input: ScrapeInput, maxTotalChargeUsd = 1, webhookUrl?: string): Promise<ApifyRun> {
+  async start(input: ScrapeInput, maxTotalChargeUsd = 1, webhookUrl?: string, webhookSecret?: string): Promise<ApifyRun> {
     if (!(maxTotalChargeUsd > 0 && maxTotalChargeUsd <= 5)) throw new Error('Run cap must be between zero and five dollars');
     const query = new URLSearchParams({ maxTotalChargeUsd: String(maxTotalChargeUsd), timeout: '300', restartOnError: 'false' });
-    if (webhookUrl) { const u = new URL(webhookUrl); if (u.protocol !== 'https:') throw new Error('Webhook requires HTTPS'); query.set('webhooks', btoa(JSON.stringify([{ eventTypes: ['ACTOR.RUN.SUCCEEDED','ACTOR.RUN.FAILED','ACTOR.RUN.TIMED_OUT','ACTOR.RUN.ABORTED'], requestUrl: u.href }]))); }
+    if (webhookUrl) { const u = new URL(webhookUrl); if (u.protocol !== 'https:') throw new Error('Webhook requires HTTPS'); query.set('webhooks', btoa(JSON.stringify([{ eventTypes: ['ACTOR.RUN.SUCCEEDED','ACTOR.RUN.FAILED','ACTOR.RUN.TIMED_OUT','ACTOR.RUN.ABORTED'], requestUrl: u.href, ...(webhookSecret ? { headersTemplate: JSON.stringify({ 'x-webhook-secret': webhookSecret }) } : {}) }]))); }
     const result = await this.api<{ data: ApifyRun }>(`acts/compass~crawler-google-places/runs?${query}`, { method: 'POST', body: JSON.stringify(buildActorInput(input)) });
     if (!result.data?.id || !result.data.defaultDatasetId) throw new Error('Apify returned an invalid run');
     return result.data;
