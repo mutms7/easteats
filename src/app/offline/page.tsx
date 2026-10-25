@@ -1,0 +1,1 @@
+export default function Offline() { return <main className="main-narrow"><p className="eyebrow">East Eats</p><h1>You’re offline.</h1><p>Connect to the internet to sign in and find fresh restaurant recommendations.</p><a className="button primary" href="/">Try again</a></main>; }

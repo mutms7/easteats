@@ -1,0 +1,2 @@
+import type { MetadataRoute } from 'next';
+export default function manifest(): MetadataRoute.Manifest { return { name: 'East Eats', short_name: 'East Eats', description: 'Find your kind of good East Asian food.', start_url: '/', scope: '/', display: 'standalone', background_color: '#F4F7FF', theme_color: '#2549D8', icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }, { src: '/icon-maskable.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' }] }; }
