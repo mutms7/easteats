@@ -107,7 +107,7 @@ describe('durable worker',()=>{
     const {deps,calls}=dependencies();
     expect(await processRefreshJobs(deps)).toEqual({processed:1,failed:0});
     expect(calls.find(c=>c.name==='ingest_place')?.args?.p_record).toMatchObject({id:'place-1'});
-    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded'&&c.args?.p_offset===1)).toBe(true);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='ingesting'&&c.args?.p_offset===1)).toBe(true);
     expect(calls.some(c=>c.name==='release_refresh_job')).toBe(true);
     expect(calls.find(c=>c.name==='claim_refresh_jobs')?.args?.p_limit).toBe(1);
   });
@@ -131,6 +131,22 @@ describe('durable worker',()=>{
     await processRefreshJobs(deps);
     const charge=calls.find(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1');
     expect(charge?.args?.p_actual_usd).toBeCloseTo(expected,8);
+  });
+  it('settles cumulative charges for all eight concurrent extraction chunks',async()=>{
+    const {deps,calls}=dependencies();
+    deps.extract=vi.fn(async(_reviews,options)=>{
+      await Promise.all(Array.from({length:8},()=>options.onUsage({model:'claude-haiku-5-5',inputTokens:1000,outputTokens:1000})));
+      return {foodQuality:null,value:null,service:null,atmosphere:null,cuisines:[],dishes:[],flavors:[],spice:null,fusion:false,reviewCount:40,confidence:0,evidence:[],updatedAt:new Date().toISOString()};
+    });
+    await processRefreshJobs(deps);
+    const charges=calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1').map(c=>Number(c.args?.p_actual_usd));
+    expect(charges).toHaveLength(8);expect(Math.max(...charges)).toBeCloseTo(.0048,8);
+    expect(deps.apify.dataset).toHaveBeenCalledWith('dataset1',0,1);
+  });
+  it('reserves the larger total needed by older Haiku extraction models',async()=>{
+    const {deps,calls}=dependencies({extractModel:'claude-haiku-4-5-20251001'});
+    await processRefreshJobs(deps);
+    expect(calls.find(c=>c.name==='reserve_usage'&&c.args?.p_provider==='anthropic')?.args?.p_reserved_usd).toBe(.5);
   });
   it('uses feature cache without another paid extraction',async()=>{
     const {deps,calls}=dependencies();

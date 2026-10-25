@@ -54,7 +54,7 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
       }
       if (run.status!=='SUCCEEDED') { await update(rpc,job.id,'running'); continue; }
       if (job.reservation_id && Number.isFinite(run.usageTotalUsd)) await rpcValue(rpc,'settle_usage',{p_id:job.reservation_id,p_actual_usd:run.usageTotalUsd});
-      const rows=await apify.dataset(run.defaultDatasetId,job.cursor_offset,2);
+      const rows=await apify.dataset(run.defaultDatasetId,job.cursor_offset,1);
       let offset=job.cursor_offset;
       for (const row of rows) {
         const place=normalizePlace(row);
@@ -66,9 +66,11 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
             if (cached?.sourceHash!==hash) {
               // Refuse unknown model prices before making a paid call.
               extractionCost({model:deps.extractModel,inputTokens:0,outputTokens:0});
-              const reservation=await rpcValue<string|null>(rpc,'reserve_usage',{p_provider:'anthropic',p_operation:`extract:${job.id}:${offset}:${crypto.randomUUID()}`,p_reserved_usd:.10});
+              const reservation=await rpcValue<string|null>(rpc,'reserve_usage',{p_provider:'anthropic',p_operation:`extract:${job.id}:${offset}:${crypto.randomUUID()}`,p_reserved_usd:deps.extractModel==='claude-haiku-4-5-20251001'?.50:.10});
               if (reservation) {
-                const features=await deps.extract(place.reviews,{apiKey:deps.anthropicKey,model:deps.extractModel,onUsage:async u=>{await rpcValue(rpc,'settle_usage',{p_id:reservation,p_actual_usd:extractionCost(u)});}});
+                let totalCost=0;
+                // Concurrent extraction chunks share one reservation. Every settlement is cumulative.
+                const features=await deps.extract(place.reviews,{apiKey:deps.anthropicKey,model:deps.extractModel,onUsage:async u=>{totalCost+=extractionCost(u);const cumulative=totalCost;await rpcValue(rpc,'settle_usage',{p_id:reservation,p_actual_usd:cumulative});}});
                 await rpcValue(rpc,'put_features',{p_place_id:place.restaurant.id,p_features:features,p_source_hash:hash});
               }
             } else if (cached?.features) {
@@ -79,9 +81,17 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
         offset++;
         await update(rpc,job.id,'ingesting',{p_offset:offset});
       }
-      await update(rpc,job.id,rows.length<2?'succeeded':'ingesting',{p_offset:offset});
+      await update(rpc,job.id,rows.length<1?'succeeded':'ingesting',{p_offset:offset});
       processed++;
-    } catch { await rpcValue(rpc,'retry_refresh_job',{p_id:job.id}); failed++; }
+    } catch (error) {
+      const message=(error instanceof Error?error.message:'Unknown processing failure').slice(0,300).replace(/(?:sk-ant-|apify_api_|sb_secret_)[A-Za-z0-9_-]+/g,'[redacted]').replace(/Bearer\s+\S+/gi,'Bearer [redacted]');
+      console.error('Refresh processing error:',message);
+      const code=error!==null&&typeof error==='object'&&'code' in error?String(error.code):'';
+      const safeCode=code==='INVALID_RESPONSE'?'MODEL_INVALID_RESPONSE':code==='PROVIDER'?'PROVIDER':message.startsWith('Database operation failed:')?'DATABASE':'UNKNOWN';
+      await rpcValue(rpc,'retry_refresh_job',{p_id:job.id});
+      await rpcValue(rpc,'record_refresh_error',{p_id:job.id,p_code:safeCode});
+      failed++;
+    }
     finally { await rpcValue(rpc,'release_refresh_job',{p_id:job.id}); }
   }
   await rpcValue(rpc,'prune_review_evidence');
