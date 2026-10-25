@@ -16,6 +16,7 @@ export default function RestaurantMap({ items, center, onSelect, onSearchArea }:
     const markers: import('maplibre-gl').Marker[] = [];
     import('maplibre-gl').then(maplibre => {
       if (cancelled || !container.current) return;
+      maplibre.setWorkerUrl(new URL('maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url).toString());
       const instance = new maplibre.Map({ container: container.current, style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${encodeURIComponent(key)}`, center: [center.lng, center.lat], zoom: 12, attributionControl: { compact: true } });
       map.current = instance;
       instance.addControl(new maplibre.NavigationControl());

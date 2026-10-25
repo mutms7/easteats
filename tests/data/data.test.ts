@@ -119,7 +119,7 @@ describe('durable worker',()=>{
     const paid=calls.filter(c=>c.name==='reserve_usage'&&c.args?.p_provider==='anthropic');
     expect(paid).toHaveLength(2);
     expect(paid[0].args?.p_operation).not.toBe(paid[1].args?.p_operation);
-    expect(calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1')).toHaveLength(2);
+    expect(calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1')).toHaveLength(0);
     expect(calls.filter(c=>c.name==='retry_refresh_job')).toHaveLength(2);
   });
   it.each([{inputTokens:100_000,expected:.0105},{inputTokens:100_001,expected:.0525005}])('accounts for the Haiku long-input pricing threshold at $inputTokens tokens',async({inputTokens,expected})=>{
@@ -132,17 +132,37 @@ describe('durable worker',()=>{
     const charge=calls.find(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1');
     expect(charge?.args?.p_actual_usd).toBeCloseTo(expected,8);
   });
-  it('settles cumulative charges for all eight concurrent extraction chunks',async()=>{
+  it('holds the full reservation during all eight concurrent chunks, then settles their total once',async()=>{
     const {deps,calls}=dependencies();
     deps.extract=vi.fn(async(_reviews,options)=>{
       await Promise.all(Array.from({length:8},()=>options.onUsage({model:'claude-haiku-5-5',inputTokens:1000,outputTokens:1000})));
+      expect(calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1')).toHaveLength(0);
       return {foodQuality:null,value:null,service:null,atmosphere:null,cuisines:[],dishes:[],flavors:[],spice:null,fusion:false,reviewCount:40,confidence:0,evidence:[],updatedAt:new Date().toISOString()};
     });
     await processRefreshJobs(deps);
     const charges=calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1').map(c=>Number(c.args?.p_actual_usd));
-    expect(charges).toHaveLength(8);expect(Math.max(...charges)).toBeCloseTo(.0048,8);
+    expect(charges).toHaveLength(1);expect(charges[0]).toBeCloseTo(.0048,8);
     expect(deps.apify.dataset).toHaveBeenCalledWith('dataset1',0,1);
     expect(deps.extract).toHaveBeenCalledWith(expect.any(Array),expect.objectContaining({timeoutMs:25_000}));
+  });
+  it('keeps the complete reservation when one chunk reports usage but another has an unknown outcome',async()=>{
+    const {deps,calls}=dependencies();
+    deps.extract=vi.fn(async(_reviews,options)=>{
+      await options.onUsage({model:'claude-haiku-5-5',inputTokens:1000,outputTokens:1000});
+      const error=new Error('Taste interpretation could not connect.');
+      Object.assign(error,{code:'PROVIDER'});
+      throw error;
+    });
+    const result=await processRefreshJobs(deps);
+    expect(result).toEqual({processed:0,failed:1});
+    expect(calls.find(c=>c.name==='reserve_usage'&&c.args?.p_provider==='anthropic')?.args?.p_reserved_usd).toBe(.1);
+    expect(calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1')).toHaveLength(0);
+    expect(calls.some(c=>c.name==='record_refresh_error'&&c.args?.p_code==='PROVIDER')).toBe(true);
+  });
+  it('keeps the reservation when a completed extraction supplies no usage information',async()=>{
+    const {deps,calls}=dependencies();
+    await processRefreshJobs(deps);
+    expect(calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1')).toHaveLength(0);
   });
   it('reserves the larger total needed by older Haiku extraction models',async()=>{
     const {deps,calls}=dependencies({extractModel:'claude-haiku-4-5-20251001'});

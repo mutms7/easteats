@@ -5,6 +5,7 @@ export interface ModelOptions {
   apiKey?: string;
   model?: string;
   maxOutputTokens?: number;
+  timeoutMs?: number;
   fetch?: typeof fetch;
   onUsage?: (usage: ModelUsage) => void | Promise<void>;
 }
@@ -34,12 +35,14 @@ export async function structuredCall<T>(schema: z.ZodType<T>, system: string, in
   const model = options.model || defaultModel;
   const maxOutputTokens = options.maxOutputTokens ?? 4096;
   if (!Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 16384) throw new TasteError('INVALID_INPUT', 'Model output limit must be an integer between 1 and 16384 tokens.');
+  const timeoutMs = options.timeoutMs ?? 45_000;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 60_000) throw new TasteError('INVALID_INPUT', 'Model timeout must be an integer between 1000 and 60000 milliseconds.');
   let response: Response;
   try {
     response = await (options.fetch ?? fetch)('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': options.apiKey },
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         model,
         max_tokens: maxOutputTokens,
@@ -59,9 +62,9 @@ export async function structuredCall<T>(schema: z.ZodType<T>, system: string, in
   const inputTokens = body.usage?.input_tokens;
   const outputTokens = body.usage?.output_tokens;
   // Account for billable responses even when their content fails validation.
-  if (typeof inputTokens === 'number' && Number.isFinite(inputTokens) && inputTokens >= 0 && typeof outputTokens === 'number' && Number.isFinite(outputTokens) && outputTokens >= 0) {
+  if (typeof inputTokens === 'number' && Number.isSafeInteger(inputTokens) && inputTokens >= 0 && typeof outputTokens === 'number' && Number.isSafeInteger(outputTokens) && outputTokens >= 0) {
     await options.onUsage?.({ model, inputTokens, outputTokens });
-  }
+  } else throw new TasteError('INVALID_RESPONSE', 'Taste provider did not report valid token usage. Spend remains reserved.');
   if (body.stop_reason !== 'end_turn') throw new TasteError('INVALID_RESPONSE', 'Taste interpretation was incomplete. Please retry.');
   const text = body.content?.filter(block => block.type === 'text').map(block => block.text ?? '').join('');
   try { return schema.parse(JSON.parse(text || '')); } catch { throw new TasteError('INVALID_RESPONSE', 'Taste provider returned an invalid interpretation. Please retry.'); }

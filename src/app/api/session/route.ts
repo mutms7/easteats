@@ -1,5 +1,5 @@
 import {session} from '@/server/session';
-import {configured,demoEnabled} from '@/server/config';
+import {googleProviderReady,demoEnabled} from '@/server/config';
 import {demoState} from '@/server/demo';
 import {endpoint,json} from '@/server/http';
 import {tasteInputSchema} from '@/lib/contracts';
@@ -11,5 +11,5 @@ export const GET=endpoint(async()=>{
   const valid=tasteInputSchema.safeParse(answers);const personalized=!!profile&&!s.demo;
   const pending=!!answers&&typeof answers==='object'&&'_pending' in answers&&answers._pending===true;
   if(!profile&&valid.success)profile={...defaultTasteProfile(),interpretation:'These are default preferences. Your answers are saved, and you can retry personalization from Taste.'};
-  return json({user:s.user?{id:s.user.id,email:s.user.email}:null,configured:configured(),demo:demoEnabled(),profile,answers:valid.success?valid.data:null,dataMode:s.demo?'demo':'live',personalized,warning:pending?'Your answers are saved. Your latest taste update hasn’t finished; retry it from Taste.':undefined});
+  return json({user:s.user?{id:s.user.id,email:s.user.email}:null,configured:s.user?true:await googleProviderReady(),demo:demoEnabled(),profile,answers:valid.success?valid.data:null,dataMode:s.demo?'demo':'live',personalized,warning:pending?'Your answers are saved. Your latest taste update hasn’t finished; retry it from Taste.':undefined});
 });

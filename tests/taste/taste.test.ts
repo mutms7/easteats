@@ -99,6 +99,19 @@ describe('profile compilation', () => {
     await expect(compileTasteProfile(input, { apiKey: 'test-only', onUsage, fetch: vi.fn().mockResolvedValue(response(modelProfile(), { stopReason: 'max_tokens' })) })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
     expect(onUsage).toHaveBeenCalledWith({ model: 'claude-sonnet-5-5', inputTokens: 100, outputTokens: 80 });
   });
+  it('fails closed for missing or invalid paid usage instead of implying settlement is safe', async () => {
+    for (const usage of [undefined, { input_tokens: 100 }, { input_tokens: 100, output_tokens: -1 }, { input_tokens: 1.5, output_tokens: 80 }]) {
+      const onUsage = vi.fn();
+      const body = { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(modelProfile()) }], usage };
+      await expect(compileTasteProfile(input, { apiKey: 'test-only', onUsage, fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify(body))) })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', message: 'Taste provider did not report valid token usage. Spend remains reserved.' });
+      expect(onUsage).not.toHaveBeenCalled();
+    }
+  });
+  it('reports known paid usage even when returned JSON content is invalid', async () => {
+    const onUsage = vi.fn();
+    await expect(compileTasteProfile(input, { apiKey: 'test-only', onUsage, fetch: vi.fn().mockResolvedValue(response('{invalid')) })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    expect(onUsage).toHaveBeenCalledWith({ model: 'claude-sonnet-5-5', inputTokens: 100, outputTokens: 80 });
+  });
   it('handles provider and network failures without exposing response bodies', async () => {
     await expect(compileTasteProfile(input, { apiKey: 'test-only', fetch: vi.fn().mockResolvedValue(response('secret body', { status: 429 })) })).rejects.toMatchObject({ code: 'PROVIDER', message: 'Taste provider returned HTTP 429.' });
     await expect(compileTasteProfile(input, { apiKey: 'test-only', fetch: vi.fn().mockRejectedValue(new Error('secret')) })).rejects.toMatchObject({ code: 'PROVIDER' });
@@ -106,23 +119,82 @@ describe('profile compilation', () => {
 });
 
 describe('review extraction', () => {
-  it('keeps all 40 reviews and allocates enough output for complete extraction', async () => {
+  it('processes all 40 reviews in bounded concurrent chunks and aggregates once', async () => {
     const reviews = Array.from({ length: 40 }, (_, index) => ({ ...review, id: `review-${index}` }));
-    const observations = reviews.map(source => ({ reviewId: source.id, quote: 'Hand-pulled noodles are wonderful.', aspect: 'food', sentiment: 1 }));
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...emptyExtraction(), observations }));
-    const result = await extractFeatures(reviews, { apiKey: 'test-only', fetch: fetcher });
-    const request = JSON.parse(fetcher.mock.calls[0][1]?.body as string);
-    expect(request.max_tokens).toBe(16384);
-    expect(JSON.parse(request.messages[0].content).untrusted_data.reviews.map((item: Review) => item.id)).toEqual(reviews.map(item => item.id));
+    let active = 0, peak = 0;
+    const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+      active++; peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 2));
+      active--;
+      const request = JSON.parse(init?.body as string);
+      const batch = JSON.parse(request.messages[0].content).untrusted_data.reviews as Review[];
+      const observations = batch.map(source => ({ reviewId: source.id, quote: 'Hand-pulled noodles are wonderful.', aspect: 'food', sentiment: 1 }));
+      return response({ ...emptyExtraction(), observations });
+    });
+    const onUsage = vi.fn();
+    const result = await extractFeatures(reviews, { apiKey: 'test-only', fetch: fetcher, onUsage });
+    expect(fetcher).toHaveBeenCalledTimes(8);
+    expect(onUsage).toHaveBeenCalledTimes(8);
+    expect(peak).toBe(2);
+    const sentIds: string[] = [];
+    for (const [, init] of fetcher.mock.calls) {
+      const request = JSON.parse(init?.body as string);
+      const batch = JSON.parse(request.messages[0].content).untrusted_data.reviews as Review[];
+      expect(batch.length).toBeLessThanOrEqual(5);
+      expect(request.max_tokens).toBe(6144);
+      expect(request.system).toContain('at most 160 characters');
+      const schema = request.output_config.format.schema;
+      for (const field of ['observations', 'cuisines', 'dishes', 'flavors', 'spice', 'fusion']) {
+        expect(schema.properties[field].items.properties.reviewId.enum).toEqual(batch.map(item => item.id));
+      }
+      sentIds.push(...batch.map(item => item.id));
+    }
+    expect(sentIds).toEqual(reviews.map(item => item.id));
     expect(result.reviewCount).toBe(40);
     expect(result.evidence).toHaveLength(40);
-    expect(request.system).toContain('at most 160 characters');
+    expect(result.foodQuality).toBeCloseTo(.5 + .5 * 40 / 45);
+    expect(result.confidence).toBeCloseTo(40 / 48);
+  });
+  it('rejects evidence from a different chunk even if that review exists globally', async () => {
+    const reviews = Array.from({ length: 6 }, (_, index) => ({ ...review, id: `review-${index}` }));
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => response({ ...emptyExtraction(), observations: [{ reviewId: 'review-5', quote: 'Hand-pulled noodles are wonderful.', aspect: 'food', sentiment: 1 }] }));
+    await expect(extractFeatures(reviews, { apiKey: 'test-only', fetch: fetcher })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+  it('stops new chunks after a failure and accounts for another active request', async () => {
+    const reviews = Array.from({ length: 20 }, (_, index) => ({ ...review, id: `review-${index}` }));
+    const onUsage = vi.fn();
+    const fetcher = vi.fn<typeof fetch>().mockRejectedValueOnce(new Error('timeout')).mockImplementationOnce(async () => {
+      await new Promise(resolve => setTimeout(resolve, 2));
+      return response(emptyExtraction());
+    });
+    await expect(extractFeatures(reviews, { apiKey: 'test-only', fetch: fetcher, onUsage })).rejects.toMatchObject({ code: 'PROVIDER' });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(onUsage).toHaveBeenCalledTimes(1);
+  });
+  it('rejects the complete extraction when one chunk omits usage after another reported it', async () => {
+    const reviews = Array.from({ length: 6 }, (_, index) => ({ ...review, id: `review-${index}` }));
+    const onUsage = vi.fn();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(response(emptyExtraction())).mockImplementationOnce(async () => {
+      await new Promise(resolve => setTimeout(resolve, 2));
+      return new Response(JSON.stringify({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(emptyExtraction()) }] }));
+    });
+    await expect(extractFeatures(reviews, { apiKey: 'test-only', fetch: fetcher, onUsage })).rejects.toMatchObject({ code: 'INVALID_RESPONSE', message: 'Taste provider did not report valid token usage. Spend remains reserved.' });
+    expect(onUsage).toHaveBeenCalledTimes(1);
+  });
+  it('validates timeout bounds before making any provider calls', async () => {
+    for (const timeoutMs of [0, 999, 60001, Infinity, 1000.5]) {
+      const fetcher = vi.fn();
+      await expect(extractFeatures([review], { apiKey: 'test-only', fetch: fetcher, timeoutMs })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+      expect(fetcher).not.toHaveBeenCalled();
+    }
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response(emptyExtraction()));
+    await expect(extractFeatures([review], { apiKey: 'test-only', fetch: fetcher, timeoutMs: 25000 })).resolves.toMatchObject({ reviewCount: 1 });
   });
   it('rejects oversized quotes and excessive context observations', async () => {
     const longReview = { ...review, text: 'a'.repeat(200) };
     await expect(extractFeatures([longReview], { apiKey: 'test-only', fetch: vi.fn().mockResolvedValue(response({ ...emptyExtraction(), observations: [{ reviewId: review.id, quote: 'a'.repeat(161), aspect: 'food', sentiment: 1 }] })) })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
-    const reviews = Array.from({ length: 11 }, (_, index) => ({ ...review, id: `review-${index}` }));
-    const observations = reviews.map(source => ({ reviewId: source.id, quote: 'Service was rushed.', aspect: 'service', sentiment: -1 }));
+    const reviews = Array.from({ length: 4 }, (_, index) => ({ ...review, id: `review-${index}` }));
+    const observations = reviews.flatMap(source => ['service', 'value', 'atmosphere'].map(aspect => ({ reviewId: source.id, quote: 'Service was rushed.', aspect, sentiment: -1 })));
     await expect(extractFeatures(reviews, { apiKey: 'test-only', fetch: vi.fn().mockResolvedValue(response({ ...emptyExtraction(), observations })) })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
   it('smooths sparse food evidence and keeps service separate', async () => {

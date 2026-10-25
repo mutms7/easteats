@@ -68,9 +68,11 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
               extractionCost({model:deps.extractModel,inputTokens:0,outputTokens:0});
               const reservation=await rpcValue<string|null>(rpc,'reserve_usage',{p_provider:'anthropic',p_operation:`extract:${job.id}:${offset}:${crypto.randomUUID()}`,p_reserved_usd:deps.extractModel==='claude-haiku-4-5-20251001'?.50:.10});
               if (reservation) {
-                let totalCost=0;
-                // Concurrent extraction chunks share one reservation. Every settlement is cumulative.
-                const features=await deps.extract(place.reviews,{apiKey:deps.anthropicKey,model:deps.extractModel,timeoutMs:25_000,onUsage:async u=>{totalCost+=extractionCost(u);const cumulative=totalCost;await rpcValue(rpc,'settle_usage',{p_id:reservation,p_actual_usd:cumulative});}});
+                let totalCost=0,usageReports=0;
+                // Hold the full reservation until every concurrent chunk has completed.
+                // A timeout or invalid partial batch must not release unknown provider spend.
+                const features=await deps.extract(place.reviews,{apiKey:deps.anthropicKey,model:deps.extractModel,timeoutMs:25_000,onUsage:async u=>{totalCost+=extractionCost(u);usageReports++;}});
+                if (usageReports>0) await rpcValue(rpc,'settle_usage',{p_id:reservation,p_actual_usd:totalCost});
                 await rpcValue(rpc,'put_features',{p_place_id:place.restaurant.id,p_features:features,p_source_hash:hash});
               }
             } else if (cached?.features) {

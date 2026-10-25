@@ -1,6 +1,6 @@
 # East Eats
 
-East Asian restaurant discovery with personal taste profiles, evidence-based food ranking, fusion finds, and location search. This is a functional foundation for the incoming Claude Design handoff.
+East Asian restaurant discovery with personal taste profiles, evidence-based food ranking, fusion finds, and location search. The responsive website also includes an installable web app shell.
 
 ## Run locally
 
@@ -39,9 +39,9 @@ In Supabase URL Configuration set Site URL to `http://localhost:3000` and allow 
 
 ### Database and workers
 
-The three migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
+The four migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
 
-`refresh-worker` and `apify-webhook` are deployed. They authenticate with shared secrets, and need the following values configured under Supabase Edge Functions → Secrets before live processing: `APIFY_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_EXTRACT_MODEL`, `WORKER_SECRET`, `APIFY_WEBHOOK_SECRET`. Use the same secret values as local configuration. Built-in Supabase service credentials are available to Edge Functions.
+`refresh-worker` and `apify-webhook` are deployed and configured. Their credentials are encrypted in Supabase Vault, accessible only through service-only functions. The fourth migration installs a one-minute schedule, which dispatches work only while active jobs exist. The worker returns an authenticated HTTP 202 before processing in the background. Built-in Supabase service credentials provide its bootstrap connection.
 
 For local processing once the server secret is present:
 
@@ -51,7 +51,7 @@ npm run worker:once
 npm run worker
 ```
 
-The website can enqueue jobs independently. Keep a worker running locally, or schedule the deployed Edge worker every minute. Hosted scheduling must use Vault for the worker secret. No schedule should contain a plaintext credential. If a launch's outcome is unknown, the reservation stays held and the job requires reconciliation rather than an automatic second paid launch.
+The website can enqueue jobs independently. The hosted schedule keeps processing without the local runner. No schedule contains a plaintext credential. If a launch's outcome is unknown, the reservation stays held and the job requires reconciliation rather than an automatic second paid launch. Each invocation enriches one restaurant, so a full result set can take several minutes. Existing and partial results stay usable.
 
 ## Behavior
 
@@ -61,7 +61,7 @@ Restaurant order is calculated in code from food evidence, taste match, value, d
 
 Cached results remain usable while bounded refreshes run. Place details expire after six hours, area discovery after24hours, and review features after seven days. Identical jobs share work. Fictional demo data never enters the live database. The explicit local demo requires `EAST_EATS_DEMO=true` and is disabled in production.
 
-Initial database spending ceilings are $120 Apify and $40 Anthropic. Every paid job reserves budget transactionally before calling a provider. Per-run caps are enforced by Apify as well. These are application ceilings; coding/Design account usage is separate. Changes to `.env` budget values alone do not change database ceilings.
+Initial database spending ceilings are $120 Apify and $40 Anthropic. Every paid job reserves budget transactionally before calling a provider. Per-run caps are enforced by Apify as well. Review extraction uses up to eight batches of five reviews, with two concurrent requests and a 25-second timeout per request. It settles the full combined charge only after every batch finishes; unknown partial outcomes keep their reservation. These are application ceilings; coding/Design account usage is separate. Changes to `.env` budget values alone do not change database ceilings.
 
 ## Verification
 
@@ -83,9 +83,13 @@ The automated browser journey uses clearly labeled fictional fixtures. It verifi
 - The records were imported into the dedicated project, with reviewer personal fields removed.
 - A real Claude taste interpretation and five-review evidence extraction passed, costing $0.0064682 combined.
 - Rollback-only database checks passed profile isolation, ownership protection, and rejection of direct authenticated access to spending RPCs.
+- Authenticated API checks passed session verification, real Claude personalization, cached favorite search, nearby ranking, idempotent saved places, and MapTiler geocoding. The isolated test account was removed afterward.
+- The hosted worker returns 401 without authentication and 202 with its shared secret. Scheduled processing has successfully extracted and stored full review evidence from the existing live Apify run.
 
-Google OAuth completion, hosted worker secrets, scheduled processing, full seed coverage, installed-phone behavior, and website deployment require further live verification. No hosted frontend URL is claimed yet.
+Google OAuth is still disabled in the project's provider settings. Its client ID and secret must be saved in Supabase before real Google login can complete. Full launch-city coverage, installed-phone behavior, and website deployment require further live verification. No hosted frontend URL is claimed yet.
 
-## Claude Design handoff
+## Design
 
-Give the approved design to the ui agent. Preserve the current API contracts and functional flows while replacing product styles/components. The current screen styling is provisional.
+The layout follows the supplied [Claude design](https://claude.ai/artifact/UHeVBpfJD6HdtJVUVkgbnj#page-dcb81aee8d83): login, favorite questionnaire, taste interpretation, location, list/map discovery, saved places, and restaurant details. The food palette uses chili red, leaf green, sesame yellow, and warm white. Bricolage Grotesque, DM Sans, and DM Mono are bundled locally with their licenses, so builds do not download fonts. Login illustrations are labeled inspiration; restaurant photos come from source records, with an explicit missing-photo state.
+
+The `pg_net` extension reports an advisor warning because its extension namespace is `public`. Supabase's installed extension is not relocatable. Its request tables are denied to API roles; application secrets remain behind service-only Vault functions.
