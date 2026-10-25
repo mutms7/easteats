@@ -6,7 +6,7 @@ export type Rpc = (name: string, args?: Record<string, unknown>) => Promise<{ da
 export interface QueueJob { id: string; status: string; kind: string; input: ScrapeInput; run_id: string | null; dataset_id: string | null; reservation_id: string | null; cursor_offset: number; }
 export interface WorkerDependencies {
   rpc: Rpc; apify: Pick<ApifyClient, 'start' | 'getRun' | 'dataset'>;
-  extract: (reviews: Review[], options: { apiKey: string; model: string; onUsage: (u: { model: string; inputTokens: number; outputTokens: number }) => Promise<void> }) => Promise<RestaurantFeatures>;
+  extract: (reviews: Review[], options: { apiKey: string; model: string; timeoutMs?: number; onUsage: (u: { model: string; inputTokens: number; outputTokens: number }) => Promise<void> }) => Promise<RestaurantFeatures>;
   anthropicKey?: string; extractModel: string; extractionVersion: string; webhookUrl?: string; webhookSecret?: string;
 }
 export async function rpcValue<T>(rpc: Rpc, name: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -70,7 +70,7 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
               if (reservation) {
                 let totalCost=0;
                 // Concurrent extraction chunks share one reservation. Every settlement is cumulative.
-                const features=await deps.extract(place.reviews,{apiKey:deps.anthropicKey,model:deps.extractModel,onUsage:async u=>{totalCost+=extractionCost(u);const cumulative=totalCost;await rpcValue(rpc,'settle_usage',{p_id:reservation,p_actual_usd:cumulative});}});
+                const features=await deps.extract(place.reviews,{apiKey:deps.anthropicKey,model:deps.extractModel,timeoutMs:25_000,onUsage:async u=>{totalCost+=extractionCost(u);const cumulative=totalCost;await rpcValue(rpc,'settle_usage',{p_id:reservation,p_actual_usd:cumulative});}});
                 await rpcValue(rpc,'put_features',{p_place_id:place.restaurant.id,p_features:features,p_source_hash:hash});
               }
             } else if (cached?.features) {

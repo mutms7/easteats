@@ -142,6 +142,7 @@ describe('durable worker',()=>{
     const charges=calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1').map(c=>Number(c.args?.p_actual_usd));
     expect(charges).toHaveLength(8);expect(Math.max(...charges)).toBeCloseTo(.0048,8);
     expect(deps.apify.dataset).toHaveBeenCalledWith('dataset1',0,1);
+    expect(deps.extract).toHaveBeenCalledWith(expect.any(Array),expect.objectContaining({timeoutMs:25_000}));
   });
   it('reserves the larger total needed by older Haiku extraction models',async()=>{
     const {deps,calls}=dependencies({extractModel:'claude-haiku-4-5-20251001'});
