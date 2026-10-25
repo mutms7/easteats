@@ -1,0 +1,38 @@
+{
+  "name": "easteats",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify:data": "node scripts/verify.mjs data",
+    "verify:taste": "node scripts/verify.mjs taste",
+    "verify:ui": "node scripts/verify.mjs ui",
+    "verify:integration": "node scripts/verify.mjs integration",
+    "test:e2e": "playwright test",
+    "smoke:live": "node --env-file=.env.local scripts/smoke-live.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.118.0",
+    "maplibre-gl": "6.15.0",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "supabase": "2.122.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
