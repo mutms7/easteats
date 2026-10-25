@@ -1,0 +1,4 @@
+# East Eats
+Four agents maximum, including lead. No recursive delegation. Never expose credentials or commit .env.local. No em dashes.
+Login first, then favorite restaurant questionnaire. East Asian food plus fusion. Cached results first, bounded Apify refreshes. Food evidence is separate from service and cleanliness. Never reward low Google ratings or infer authenticity from ethnicity.
+Ownership: lead owns contracts, package/lock/config, API/auth integration and acceptance checks. data owns src/server/data/, supabase/, tests/data/. taste owns src/server/taste/, tests/taste/. ui owns src/components/, product pages/layout/styles/public assets, tests/ui/. Do not overwrite another owner's files. Ask lead for contract changes. Every handoff: GOAL, INPUTS, OWNED FILES, DON’T TOUCH, PROOF, STOP CONDITIONS. No weakening tests or disabling hooks. At most five referee repair continuations. Fixture success is not live verification.
