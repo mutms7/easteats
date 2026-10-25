@@ -3,10 +3,10 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DiscoverInput, DiscoverResponse, Favorite, Location, RankedRestaurant, RefreshJob, Restaurant, TasteInput, TasteProfile } from '@/lib/contracts';
-import { distanceLabel, favoriteFromRestaurant, fitLabel, parseDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
+import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, parseDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
 
 const RestaurantMap = dynamic(() => import('./RestaurantMap'), { ssr: false, loading: () => <div className="empty">Loading map…</div> });
-type Session = { user: { id: string; email?: string } | null; configured: boolean; demo: boolean; profile: TasteProfile | null; answers: TasteInput | null };
+type Session = { user: { id: string; email?: string } | null; configured: boolean; demo: boolean; dataMode: 'live' | 'demo'; profile: TasteProfile | null; answers: TasteInput | null };
 type Stage = 'loading' | 'login' | 'questionnaire' | 'interpretation' | 'location' | 'explore' | 'saved';
 const BAY_AREAS = [{ label: 'Berkeley', lat: 37.8715, lng: -122.273 }, { label: 'Oakland', lat: 37.8044, lng: -122.2712 }, { label: 'San Francisco', lat: 37.7749, lng: -122.4194 }];
 
@@ -29,7 +29,7 @@ function RestaurantPhoto({ restaurant }: { restaurant: Restaurant }) {
   return image && !failed ? <img className="restaurant-photo" src={image} alt={`Food at ${restaurant.name}`} loading="lazy" onError={() => setFailed(true)} /> : <div className="restaurant-photo photo-fallback"><Bowl /><span>Photo unavailable</span></div>;
 }
 
-function Details({ item, saved, onSave, onClose }: { item: RankedRestaurant; saved: boolean; onSave: () => void; onClose: () => void }) {
+function Details({ item, saved, saving, onSave, onClose }: { item: RankedRestaurant; saved: boolean; saving: boolean; onSave: () => void; onClose: () => void }) {
   const dialog = useRef<HTMLDivElement>(null);
   const r = item.restaurant;
   useEffect(() => {
@@ -52,7 +52,7 @@ function Details({ item, saved, onSave, onClose }: { item: RankedRestaurant; sav
   return <div className="dialog-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}><div className="detail-dialog" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabIndex={-1} ref={dialog}>
     <button className="button close-dialog" onClick={onClose} aria-label="Close restaurant details">Close ×</button>
     <RestaurantPhoto restaurant={r} /><div className="detail-content"><p className="eyebrow">{r.cuisines.join(' · ') || 'Cuisine details pending'} · {r.city}</p><h2 id="detail-title">{r.name}</h2><p>{r.address}</p>
-    <div className="inline-actions"><button className="button primary" onClick={onSave} aria-pressed={saved}>{saved ? 'Saved' : 'Save this place'}</button><a className="button" href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.address)}&destination_place_id=${encodeURIComponent(r.id)}`} target="_blank" rel="noreferrer">Get directions ↗</a></div>
+    <div className="inline-actions"><button className="button primary" onClick={onSave} aria-pressed={saved} disabled={saving}>{saving ? 'Saving…' : saved ? 'Saved' : 'Save this place'}</button><a className="button" href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.address)}&destination_place_id=${encodeURIComponent(r.id)}`} target="_blank" rel="noreferrer">Get directions ↗</a></div>
     <section className="field-note"><h3>Why it fits</h3><p>{item.explanation}</p></section>
     <div className="details-grid"><section><h3>Dishes to explore</h3><p>{r.features?.dishes.length ? r.features.dishes.join(', ') : 'We do not have enough dish information yet.'}</p></section><section><h3>Listed hours</h3>{r.hours.length ? <ul>{r.hours.map((hour, index) => <li key={index}>{hour}</li>)}</ul> : <p>Hours are unavailable. Check with the restaurant before visiting.</p>}<p className="small">Details checked {new Date(r.fetchedAt).toLocaleDateString()}. Hours can change.</p></section></div>
     <section><h3>What the reviews say</h3>{r.features?.evidence.length ? r.features.evidence.map(evidence => <blockquote key={`${evidence.id}-${evidence.aspect}`} className={evidence.aspect === 'cleanliness' ? 'concern' : ''}><span className="eyebrow">{evidence.aspect === 'cleanliness' ? 'Reported cleanliness concern' : evidence.aspect}</span><p>{evidence.text}</p>{safeExternalUrl(evidence.sourceUrl) && <a href={safeExternalUrl(evidence.sourceUrl)} target="_blank" rel="noreferrer">Review source ↗</a>}</blockquote>) : <p>There is not enough review evidence to explain this place yet.</p>}</section>
@@ -86,6 +86,8 @@ export default function EastEatsApp() {
   const [job, setJob] = useState<{ job: RefreshJob; purpose: 'favorites' | 'discovery' } | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState<Restaurant[]>([]);
+  const [savingIds, setSavingIds] = useState<string[]>([]);
+  const savingRef = useRef(new Set<string>());
   const [selected, setSelected] = useState<RankedRestaurant | null>(null);
   const mounted = useRef(true);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
@@ -105,8 +107,8 @@ export default function EastEatsApp() {
   useEffect(() => {
     mounted.current = true; void boot();
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-    const authError = new URLSearchParams(window.location.search).get('error');
-    if (authError) setNotice('Sign-in did not finish. Please try again.');
+    const signInNotice = authNotice(window.location.search);
+    if (signInNotice) setNotice(signInNotice);
     return () => { mounted.current = false; };
   }, [boot]);
   useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(`east-eats:taste:${session.user.id}`, JSON.stringify(favorites)); } catch { /* A private browsing storage limit must not block the questionnaire. */ } } }, [favorites, draftReady, session?.user]);
@@ -114,10 +116,11 @@ export default function EastEatsApp() {
   const discover = useCallback(async (offerUpdate = false, signal?: AbortSignal) => {
     if (!location || !profile) return;
     const input: DiscoverInput = { ...location, ...filters };
-    const data = await request<DiscoverResponse>('/api/discover', input, undefined, signal);
+    const data = await request<DiscoverResponse & { warning?: string }>('/api/discover', input, undefined, signal);
     if (offerUpdate) setPendingResults(data); else { setResults(data); setPendingResults(null); }
     if (data.job && ['queued', 'running'].includes(data.job.status)) setJob({ job: data.job, purpose: 'discovery' });
     if (data.job?.status === 'budget_limited') setNotice('We are showing saved results while live refreshes are paused.');
+    if (data.warning) setNotice(data.warning);
   }, [location, profile, filters]);
   useEffect(() => {
     if (stage !== 'explore' || !location || !profile) return;
@@ -179,9 +182,11 @@ export default function EastEatsApp() {
     try { const data = await request<{ items: { label: string; lat: number; lng: number }[] }>('/api/geocode', { query: areaQuery.trim() }); setGeocoded(data.items); if (!data.items.length) setError('We could not find that area. Try a city or neighborhood name.'); } catch (e) { setError(e instanceof Error ? e.message : 'Area search did not finish.'); } finally { setBusy(''); }
   }
   async function toggleSaved(restaurant: Restaurant) {
+    if (savingRef.current.has(restaurant.id)) return;
+    savingRef.current.add(restaurant.id); setSavingIds([...savingRef.current]);
     setError('');
     const isSaved = savedPlaces.some(place => place.id === restaurant.id);
-    try { await request(`/api/saved/${encodeURIComponent(restaurant.id)}`, undefined, isSaved ? 'DELETE' : 'PUT'); setSavedPlaces(places => isSaved ? places.filter(place => place.id !== restaurant.id) : [...places, restaurant]); setNotice(isSaved ? `${restaurant.name} removed from Saved.` : `${restaurant.name} saved.`); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save this place.'); }
+    try { await request(`/api/saved/${encodeURIComponent(restaurant.id)}`, undefined, isSaved ? 'DELETE' : 'PUT'); setSavedPlaces(places => isSaved ? places.filter(place => place.id !== restaurant.id) : places.some(place => place.id === restaurant.id) ? places : [...places, restaurant]); setNotice(isSaved ? `${restaurant.name} removed from Saved.` : `${restaurant.name} saved.`); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save this place.'); } finally { savingRef.current.delete(restaurant.id); setSavingIds([...savingRef.current]); }
   }
   async function logout() {
     setBusy('logout'); setError('');
@@ -192,7 +197,7 @@ export default function EastEatsApp() {
   return <div className="app-shell">
     <a href="#main" className="skip-link">Skip to content</a>
     <header className="site-header"><a className="wordmark" href="/" aria-label="East Eats home"><Bowl />east eats<span className="wordmark-dot">.</span></a><span className="header-note">a food field guide</span>{session?.user && <button className="text-button" onClick={logout} disabled={busy === 'logout'}>{busy === 'logout' ? 'Signing out…' : 'Sign out'}</button>}</header>
-    {session?.demo && session.user && <div className="demo-banner">Demo mode · Fictional restaurants and sample recommendations. No live scraping.</div>}
+    {session?.dataMode === 'demo' && session.user && <div className="demo-banner">Demo mode · Fictional restaurants and sample recommendations. No live scraping.</div>}
     <main id="main" className={stage === 'explore' || stage === 'saved' ? 'main-wide' : 'main-narrow'}>
       {error && <div className="message error" role="alert">{error}<button className="text-button" onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
       {notice && <div className="message" role="status">{notice}<button className="text-button" onClick={() => setNotice('')} aria-label="Dismiss notification">×</button></div>}
@@ -218,6 +223,6 @@ export default function EastEatsApp() {
     </main>
     {session?.user && profile && stage !== 'loading' && stage !== 'login' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' || stage === 'location' ? 'page' : undefined} onClick={() => setStage(location ? 'explore' : 'location')}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>}
     <footer className="site-footer">Food first. Your tastes, always.<span>Berkeley · Oakland · San Francisco</span></footer>
-    {selected && <Details item={selected} saved={savedPlaces.some(place => place.id === selected.restaurant.id)} onSave={() => void toggleSaved(selected.restaurant)} onClose={closeDetails} />}
+    {selected && <Details item={selected} saved={savedPlaces.some(place => place.id === selected.restaurant.id)} saving={savingIds.includes(selected.restaurant.id)} onSave={() => void toggleSaved(selected.restaurant)} onClose={closeDetails} />}
   </div>;
 }

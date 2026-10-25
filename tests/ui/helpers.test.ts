@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDraft, safeExternalUrl, toggleReason, validFavorites } from '../../src/components/ui-helpers';
+import { authNotice, parseDraft, safeExternalUrl, toggleReason, validFavorites } from '../../src/components/ui-helpers';
 const favorite = { restaurantId: 'a', name: 'Noodle Field', city: 'Berkeley', reasons: [], notes: '' };
 describe('questionnaire behavior', () => {
   it('requires a reason before a favorite can complete onboarding', () => {
@@ -25,5 +25,13 @@ describe('external source links', () => {
     expect(safeExternalUrl('javascript:alert(1)')).toBeUndefined();
     expect(safeExternalUrl('data:text/html,no')).toBeUndefined();
     expect(safeExternalUrl('https://maps.google.com/')).toBe('https://maps.google.com/');
+  });
+});
+describe('sign-in feedback', () => {
+  it('explains callback failures and setup without reflecting untrusted query text', () => {
+    expect(authNotice('?auth=failed')).toContain('Sign-in did not finish');
+    expect(authNotice('?auth=setup')).toContain('waiting for setup');
+    expect(authNotice('?error=untrusted-content')).not.toContain('untrusted-content');
+    expect(authNotice('?auth=unknown')).toBe('');
   });
 });

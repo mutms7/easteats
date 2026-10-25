@@ -1,6 +1,12 @@
 import { tasteInputSchema, type Favorite, type RankedRestaurant, type Restaurant } from '@/lib/contracts';
 
 export const REASONS = ['The food itself', 'Regional dishes', 'Great value', 'Spice and bold flavors', 'Atmosphere', 'Friendly service'] as const;
+export function authNotice(search: string): string {
+  const params = new URLSearchParams(search);
+  if (params.get('auth') === 'setup') return 'Google sign-in is waiting for setup. Please try again after it is connected.';
+  if (params.get('auth') === 'failed' || params.has('error')) return 'Sign-in did not finish. Please try again.';
+  return '';
+}
 export function toggleReason(favorite: Favorite, reason: string): Favorite {
   return { ...favorite, reasons: favorite.reasons.includes(reason) ? favorite.reasons.filter(value => value !== reason) : [...favorite.reasons, reason] };
 }
