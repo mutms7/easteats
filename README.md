@@ -39,7 +39,7 @@ In Supabase URL Configuration set Site URL to `http://localhost:3000` and allow 
 
 ### Database and workers
 
-The four migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
+The five migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
 
 `refresh-worker` and `apify-webhook` are deployed and configured. Their credentials are encrypted in Supabase Vault, accessible only through service-only functions. The fourth migration installs a one-minute schedule, which dispatches work only while active jobs exist. The worker returns an authenticated HTTP 202 before processing in the background. Built-in Supabase service credentials provide its bootstrap connection.
 
@@ -86,10 +86,10 @@ The automated browser journey uses clearly labeled fictional fixtures. It verifi
 - Authenticated API checks passed session verification, real Claude personalization, cached favorite search, nearby ranking, idempotent saved places, and MapTiler geocoding. The isolated test account was removed afterward.
 - The hosted worker returns 401 without authentication and 202 with its shared secret. Scheduled processing has successfully extracted and stored full review evidence from the existing live Apify run.
 
-Google OAuth is still disabled in the project's provider settings. Its client ID and secret must be saved in Supabase before real Google login can complete. Full launch-city coverage, installed-phone behavior, and website deployment require further live verification. No hosted frontend URL is claimed yet.
+Google OAuth is enabled. The local sign-in route was verified to redirect through Supabase to `accounts.google.com` with the correct Supabase callback. A person's first Google consent and completed return session still need a manual check. Full launch-city coverage, installed-phone behavior, and website deployment require further live verification. No hosted frontend URL is claimed yet.
 
 ## Design
 
-The layout follows the supplied [Claude design](https://claude.ai/artifact/UHeVBpfJD6HdtJVUVkgbnj#page-dcb81aee8d83): login, favorite questionnaire, taste interpretation, location, list/map discovery, saved places, and restaurant details. The food palette uses chili red, leaf green, sesame yellow, and warm white. Bricolage Grotesque, DM Sans, and DM Mono are bundled locally with their licenses, so builds do not download fonts. Login illustrations are labeled inspiration; restaurant photos come from source records, with an explicit missing-photo state.
+The flow follows the supplied [Claude design](https://claude.ai/artifact/UHeVBpfJD6HdtJVUVkgbnj#page-dcb81aee8d83): login, favorite questionnaire, taste interpretation, location, list/map discovery, saved places, and restaurant details. The updated visual direction follows the user's DoorDash reference: clean geometric Plus Jakarta Sans, one vibrant flame-red accent, white surfaces, rounded controls, and real food photography. The font is bundled locally with its license. See [the research and applied design choices](docs/design-research.md) and [photo credits](public/images/credits.md). Restaurant photos come from their own source records, with an explicit missing-photo state.
 
 The `pg_net` extension reports an advisor warning because its extension namespace is `public`. Supabase's installed extension is not relocatable. Its request tables are denied to API roles; application secrets remain behind service-only Vault functions.
