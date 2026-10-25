@@ -1,5 +1,5 @@
 export interface ApifyRun { id: string; actId: string; status: string; defaultDatasetId: string; usageTotalUsd?: number; }
-export interface ScrapeInput { query?: string; city?: string; lat?: number; lng?: number; radiusKm?: number; urls?: string[]; maxPlaces?: number; maxReviews?: number; }
+export interface ScrapeInput { query?: string; city?: string; lat?: number; lng?: number; radiusKm?: number; urls?: string[]; maxPlaces?: number; maxReviews?: number; mode?: 'for-you' | 'fusion'; }
 
 export function buildActorInput(input: ScrapeInput): Record<string, unknown> {
   const common = { maxCrawledPlacesPerSearch: Math.max(1, Math.min(40, input.maxPlaces ?? 20)), maxReviews: Math.max(0, Math.min(40, input.maxReviews ?? 40)), reviewsSort: 'newest', scrapeReviewsPersonalData: false, scrapePlaceDetailPage: true, maxImages: 0, language: 'en' };
@@ -7,7 +7,7 @@ export function buildActorInput(input: ScrapeInput): Record<string, unknown> {
     for (const value of input.urls) { const u = new URL(value); if (u.protocol !== 'https:' || !['www.google.com','google.com','maps.google.com'].includes(u.hostname)) throw new Error('Only Google Maps place URLs are accepted'); }
     return { ...common, startUrls: input.urls.slice(0, 20).map(url => ({ url })) };
   }
-  const query = input.query?.trim() || 'East Asian restaurant';
+  const query = input.query?.trim() || (input.mode === 'fusion' ? 'East Asian fusion restaurant' : 'East Asian restaurant');
   if (query.length > 200) throw new Error('Search query is too long');
   if (input.city?.trim()) return { ...common, searchStringsArray: [query], locationQuery: input.city.trim().slice(0, 150) };
   if (input.query?.trim() && input.lat === undefined && input.lng === undefined) return { ...common, searchStringsArray: [query] };

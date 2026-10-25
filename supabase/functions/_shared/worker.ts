@@ -24,7 +24,7 @@ export async function sourceHash(reviews: Review[], version: string, model: stri
 }
 function extractionCost(u: { model: string; inputTokens: number; outputTokens: number }): number {
   const rates: Record<string,[number,number]> = {'claude-haiku-5-5':[.1,.5],'claude-haiku-4-5-20251001':[1,5]};
-  const rate=rates[u.model]; if (!rate) throw new Error('Extraction model pricing is not configured');
+  const rate=u.model==='claude-haiku-5-5'&&u.inputTokens>100_000?[.5,2.5]:rates[u.model]; if (!rate) throw new Error('Extraction model pricing is not configured');
   return (u.inputTokens*rate[0]+u.outputTokens*rate[1])/1_000_000;
 }
 

@@ -47,6 +47,11 @@ describe('Apify adapter',()=>{
     expect(buildActorInput({query:'My favorite noodle shop'})).toMatchObject({searchStringsArray:['My favorite noodle shop'],scrapeReviewsPersonalData:false,reviewsSort:'newest'});
     expect(buildActorInput({query:'Noodles',city:'Tokyo'})).toHaveProperty('locationQuery','Tokyo');
   });
+  it('uses the fusion discovery query only when the user has not supplied one',()=>{
+    expect(buildActorInput({mode:'fusion',city:'Berkeley'})).toHaveProperty('searchStringsArray',['East Asian fusion restaurant']);
+    expect(buildActorInput({mode:'fusion',city:'Berkeley',query:'Korean tacos'})).toHaveProperty('searchStringsArray',['Korean tacos']);
+    expect(buildActorInput({mode:'for-you',city:'Berkeley'})).toHaveProperty('searchStringsArray',['East Asian restaurant']);
+  });
   it('caps paid expansion and uses a bounded polygon',()=>{
     const input=buildActorInput({lat:37.87,lng:-122.27,radiusKm:5,maxPlaces:999,maxReviews:999});
     expect(input).toMatchObject({maxCrawledPlacesPerSearch:40,maxReviews:40,maxImages:0,customGeolocation:{type:'Polygon'}});
@@ -116,6 +121,16 @@ describe('durable worker',()=>{
     expect(paid[0].args?.p_operation).not.toBe(paid[1].args?.p_operation);
     expect(calls.filter(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1')).toHaveLength(2);
     expect(calls.filter(c=>c.name==='retry_refresh_job')).toHaveLength(2);
+  });
+  it.each([{inputTokens:100_000,expected:.0105},{inputTokens:100_001,expected:.0525005}])('accounts for the Haiku long-input pricing threshold at $inputTokens tokens',async({inputTokens,expected})=>{
+    const {deps,calls}=dependencies();
+    deps.extract=vi.fn(async(_reviews,options)=>{
+      await options.onUsage({model:'claude-haiku-5-5',inputTokens,outputTokens:1000});
+      return {foodQuality:null,value:null,service:null,atmosphere:null,cuisines:[],dishes:[],flavors:[],spice:null,fusion:false,reviewCount:1,confidence:0,evidence:[],updatedAt:new Date().toISOString()};
+    });
+    await processRefreshJobs(deps);
+    const charge=calls.find(c=>c.name==='settle_usage'&&c.args?.p_id==='reservation1');
+    expect(charge?.args?.p_actual_usd).toBeCloseTo(expected,8);
   });
   it('uses feature cache without another paid extraction',async()=>{
     const {deps,calls}=dependencies();
