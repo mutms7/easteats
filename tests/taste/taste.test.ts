@@ -85,6 +85,7 @@ describe('profile compilation', () => {
     expect(request.system).toContain('untrusted JSON data');
     expect(JSON.parse(request.messages[0].content).untrusted_data.favorites[0].notes).toBe(malicious);
     expect(request.output_config.format.type).toBe('json_schema');
+    expect(request.max_tokens).toBe(4096);
   });
   it('does not fake AI personalization without a key', async () => {
     await expect(compileTasteProfile(input)).rejects.toMatchObject({ code: 'CONFIGURATION' });
@@ -105,6 +106,25 @@ describe('profile compilation', () => {
 });
 
 describe('review extraction', () => {
+  it('keeps all 40 reviews and allocates enough output for complete extraction', async () => {
+    const reviews = Array.from({ length: 40 }, (_, index) => ({ ...review, id: `review-${index}` }));
+    const observations = reviews.map(source => ({ reviewId: source.id, quote: 'Hand-pulled noodles are wonderful.', aspect: 'food', sentiment: 1 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(response({ ...emptyExtraction(), observations }));
+    const result = await extractFeatures(reviews, { apiKey: 'test-only', fetch: fetcher });
+    const request = JSON.parse(fetcher.mock.calls[0][1]?.body as string);
+    expect(request.max_tokens).toBe(16384);
+    expect(JSON.parse(request.messages[0].content).untrusted_data.reviews.map((item: Review) => item.id)).toEqual(reviews.map(item => item.id));
+    expect(result.reviewCount).toBe(40);
+    expect(result.evidence).toHaveLength(40);
+    expect(request.system).toContain('at most 160 characters');
+  });
+  it('rejects oversized quotes and excessive context observations', async () => {
+    const longReview = { ...review, text: 'a'.repeat(200) };
+    await expect(extractFeatures([longReview], { apiKey: 'test-only', fetch: vi.fn().mockResolvedValue(response({ ...emptyExtraction(), observations: [{ reviewId: review.id, quote: 'a'.repeat(161), aspect: 'food', sentiment: 1 }] })) })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    const reviews = Array.from({ length: 11 }, (_, index) => ({ ...review, id: `review-${index}` }));
+    const observations = reviews.map(source => ({ reviewId: source.id, quote: 'Service was rushed.', aspect: 'service', sentiment: -1 }));
+    await expect(extractFeatures(reviews, { apiKey: 'test-only', fetch: vi.fn().mockResolvedValue(response({ ...emptyExtraction(), observations })) })).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
   it('smooths sparse food evidence and keeps service separate', async () => {
     const output = { ...emptyExtraction(), observations: [ { reviewId: review.id, quote: 'Hand-pulled noodles are wonderful.', aspect: 'food', sentiment: 1 }, { reviewId: review.id, quote: 'Service was rushed.', aspect: 'service', sentiment: -1 } ], dishes: [{ reviewId: review.id, quote: 'Hand-pulled noodles are wonderful.', value: 'hand-pulled noodles' }] };
     const result = await extractFeatures([review], { apiKey: 'test-only', fetch: vi.fn().mockResolvedValue(response(output)) });

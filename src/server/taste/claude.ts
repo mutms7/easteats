@@ -4,6 +4,7 @@ export interface ModelUsage { model: string; inputTokens: number; outputTokens: 
 export interface ModelOptions {
   apiKey?: string;
   model?: string;
+  maxOutputTokens?: number;
   fetch?: typeof fetch;
   onUsage?: (usage: ModelUsage) => void | Promise<void>;
 }
@@ -31,6 +32,8 @@ function providerSchema(value: unknown): unknown {
 export async function structuredCall<T>(schema: z.ZodType<T>, system: string, input: unknown, options: ModelOptions, defaultModel: string): Promise<T> {
   if (!options.apiKey?.trim()) throw new TasteError('CONFIGURATION', 'Taste interpretation is not configured.');
   const model = options.model || defaultModel;
+  const maxOutputTokens = options.maxOutputTokens ?? 4096;
+  if (!Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 16384) throw new TasteError('INVALID_INPUT', 'Model output limit must be an integer between 1 and 16384 tokens.');
   let response: Response;
   try {
     response = await (options.fetch ?? fetch)('https://api.anthropic.com/v1/messages', {
@@ -39,7 +42,7 @@ export async function structuredCall<T>(schema: z.ZodType<T>, system: string, in
       signal: AbortSignal.timeout(45_000),
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
+        max_tokens: maxOutputTokens,
         system,
         messages: [{ role: 'user', content: JSON.stringify({ untrusted_data: input }) }],
         output_config: { format: { type: 'json_schema', schema: providerSchema(z.toJSONSchema(schema)) } },
