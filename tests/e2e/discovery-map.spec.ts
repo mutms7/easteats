@@ -22,9 +22,9 @@ async function chooseWaterloo(page: Page) {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Where are.*we eating/ })).toBeVisible();
   await page.clock.install();
-  await page.getByRole('textbox', { name: 'Or enter a city or neighborhood' }).fill('University Avenue Waterloo');
+  await page.getByRole('combobox', { name: 'Address or area' }).fill('University Avenue Waterloo');
   await page.getByRole('button', { name: 'Find area', exact: true }).click();
-  await page.getByRole('button', { name: 'University Avenue, Waterloo, Ontario', exact: true }).click();
+  await page.getByRole('option', { name: 'University Avenue, Waterloo, Ontario', exact: true }).click();
 }
 
 test('a cold area fills automatically and exposes every matching map location', async ({ page }) => {

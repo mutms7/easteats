@@ -63,10 +63,10 @@ try{
   const page=await context.newPage();
   await page.route('**/api/discover',route=>route.continue({postData:JSON.stringify({...route.request().postDataJSON(),searchId:proof.searchIds[1]})}));
   await page.goto(origin);
-  await page.getByRole('textbox',{name:'Or enter a city or neighborhood'}).fill(proof.query);
+  await page.getByRole('combobox',{name:'Address or area'}).fill(proof.query);
   await page.getByRole('button',{name:'Find area',exact:true}).click();
   const response=page.waitForResponse(r=>r.url().endsWith('/api/discover')&&r.status()===200);
-  await page.getByRole('button',{name:proof.area!.label,exact:true}).click();
+  await page.getByRole('option',{name:proof.area!.label,exact:true}).click();
   const payload=await(await response).json();
   if(!payload.items?.length)throw new Error('Live discovery returned no ranked Waterloo places.');
   await expect(page.locator('.map-pin')).toHaveCount(payload.items.length,{timeout:20000});

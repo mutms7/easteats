@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import FieldGuideHero from './FieldGuideHero';
+import LocationSearch from './LocationSearch';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DiscoverInput, DiscoverResponse, Favorite, Location, RankedRestaurant, RefreshJob, Restaurant, TasteInput, TasteProfile } from '@/lib/contracts';
 import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, mergeDiscoveryResults, parseDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
@@ -69,6 +70,9 @@ function Details({ item, saved, saving, onSave, onClose }: { item: RankedRestaur
 
 export default function EastEatsApp() {
   const [stage, setStage] = useState<Stage>('loading');
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
+  const locationOperation = useRef(0);
   const [session, setSession] = useState<Session | null>(null);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [draftReady, setDraftReady] = useState(false);
@@ -87,8 +91,6 @@ export default function EastEatsApp() {
   const favoriteRequest = useRef<AbortController | null>(null);
   const [location, setLocation] = useState<Location | null>(null);
   const [areaLabel, setAreaLabel] = useState('Nearby');
-  const [areaQuery, setAreaQuery] = useState('');
-  const [geocoded, setGeocoded] = useState<{ label: string; lat: number; lng: number }[]>([]);
   const [filters, setFilters] = useState({ radiusKm: 5, mode: 'for-you' as 'for-you' | 'fusion', cuisine: '', query: '', maxPrice: 4 });
   const [queryDraft, setQueryDraft] = useState('');
   const [results, setResults] = useState<DiscoverResponse | null>(null);
@@ -125,6 +127,9 @@ export default function EastEatsApp() {
     return () => { mounted.current = false; favoriteRequest.current?.abort(); };
   }, [boot]);
   useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(`east-eats:taste:${session.user.id}`, JSON.stringify(favorites)); } catch { /* A private browsing storage limit must not block the questionnaire. */ } } }, [favorites, draftReady, session?.user]);
+  useEffect(() => {
+    if (stage !== 'location') { locationOperation.current += 1; setBusy(current => current === 'location' ? '' : current); }
+  }, [stage]);
 
   const discover = useCallback(async (intent: DiscoveryIntent, offerUpdate = false, signal?: AbortSignal) => {
     const data = await request<DiscoveryPayload>('/api/discover', intent.input, undefined, signal);
@@ -284,17 +289,14 @@ export default function EastEatsApp() {
     const next = { ...filters, ...patch }; setFilters(next);
     if (location) beginDiscovery(location, next);
   }
-  function chooseLocation(value: Location, label: string) { setLocation(value); setAreaLabel(label); setError(''); beginDiscovery(value); setStage('explore'); }
+  function chooseLocation(value: Location, label: string) { locationOperation.current += 1; setBusy(current => current === 'location' ? '' : current); setLocation(value); setAreaLabel(label); setError(''); beginDiscovery(value); setStage('explore'); }
   function locate() {
     setError('');
-    if (!navigator.geolocation) { setError('This browser cannot find your location. Enter an area below.'); return; }
+    if (!navigator.geolocation) { setError('This browser cannot find your location. Enter an address or area below.'); return; }
+    const operation = ++locationOperation.current;
+    const isCurrent = () => mounted.current && locationOperation.current === operation && stageRef.current === 'location';
     setBusy('location');
-    navigator.geolocation.getCurrentPosition(position => { setBusy(''); chooseLocation({ lat: position.coords.latitude, lng: position.coords.longitude }, 'Near you'); }, () => { setBusy(''); setError('We could not use your location. Choose a city or enter an area below.'); }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
-  }
-  async function findArea(event: FormEvent) {
-    event.preventDefault(); if (!areaQuery.trim()) return;
-    setBusy('area'); setError('');
-    try { const data = await request<{ items: { label: string; lat: number; lng: number }[] }>('/api/geocode', { query: areaQuery.trim() }); setGeocoded(data.items); if (!data.items.length) setError('We could not find that area. Try a city or neighborhood name.'); } catch (e) { setError(e instanceof Error ? e.message : 'Area search did not finish.'); } finally { setBusy(''); }
+    navigator.geolocation.getCurrentPosition(position => { if (!isCurrent()) return; setBusy(''); chooseLocation({ lat: position.coords.latitude, lng: position.coords.longitude }, 'Near you'); }, () => { if (!isCurrent()) return; setBusy(''); setError('We could not use your location. Enter an address or area below.'); }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
   }
   async function toggleSaved(restaurant: Restaurant) {
     if (savingRef.current.has(restaurant.id)) return;
@@ -304,6 +306,7 @@ export default function EastEatsApp() {
     try { await request(`/api/saved/${encodeURIComponent(restaurant.id)}`, undefined, isSaved ? 'DELETE' : 'PUT'); setSavedPlaces(places => isSaved ? places.filter(place => place.id !== restaurant.id) : places.some(place => place.id === restaurant.id) ? places : [...places, restaurant]); setNotice(isSaved ? `${restaurant.name} removed from Saved.` : `${restaurant.name} saved.`); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save this place.'); } finally { savingRef.current.delete(restaurant.id); setSavingIds([...savingRef.current]); }
   }
   async function logout() {
+    locationOperation.current += 1;
     favoriteSearchId.current += 1; favoriteRequest.current?.abort(); setFavoriteJob(null); setFavoriteSearch(null); setSearchResults(null);
     setBusy('logout'); setError('');
     try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setDraftReady(false); setResults(null); setSavedPlaces([]); setLocation(null); activeDiscovery.current = null; setDiscoveryIntent(null); setDiscoveryJob(null); setDiscoveryPhase('idle'); appliedResults.current = null; setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
@@ -328,7 +331,7 @@ export default function EastEatsApp() {
 
       {stage === 'interpretation' && profile && <section><p className="eyebrow">Your taste profile</p><h1>{personalized ? 'Here’s what we’re hearing.' : 'Your answers are saved.'}</h1><div className="field-note interpretation"><p>{personalized ? profile.interpretation : 'We could not personalize your recommendations yet. You can retry or explore with the default ranking.'}</p></div><form onSubmit={submitTaste}><label htmlFor="correction">Anything we missed?</label><textarea id="correction" rows={3} maxLength={1500} value={correction} onChange={event => setCorrection(event.target.value)} placeholder="Actually, I prefer mild food and I’d travel farther for great dumplings." /><div className="inline-actions"><button className="button" disabled={busy === 'taste'}>{busy === 'taste' ? 'Updating…' : personalized ? 'Update my tastes' : 'Retry personalization'}</button><button className="button primary" type="button" onClick={() => setStage(location ? 'explore' : 'location')}>Let’s find somewhere</button></div></form><button className="text-button" onClick={() => setStage('questionnaire')}>Edit my favorites</button></section>}
 
-      {stage === 'location' && <section><p className="eyebrow">Let’s look around</p><h1>Where are<br />we eating?</h1><p className="lede">Find places nearby, or explore a different neighborhood.</p><button className="button primary" onClick={locate} disabled={busy === 'location'}>{busy === 'location' ? 'Finding your location…' : 'Use my location'}</button><p className="small">We use your location for this search. We don’t save your exact coordinates.</p><div className="city-shortcuts">{BAY_AREAS.map(area => <button key={area.label} className="button" onClick={() => chooseLocation(area, area.label)}>{area.label}</button>)}</div><form className="area-form" onSubmit={findArea}><label htmlFor="area">Or enter a city or neighborhood</label><div className="input-action"><input id="area" value={areaQuery} onChange={event => setAreaQuery(event.target.value)} maxLength={150} required placeholder="Richmond District, San Francisco" /><button className="button" disabled={busy === 'area'}>{busy === 'area' ? 'Finding…' : 'Find area'}</button></div></form>{geocoded.length > 0 && <ul className="area-results">{geocoded.map((area, index) => <li key={index}><button className="button" onClick={() => chooseLocation(area, area.label)}>{area.label}</button></li>)}</ul>}</section>}
+      {stage === 'location' && <section><p className="eyebrow">Let’s look around</p><h1>Where are<br />we eating?</h1><p className="lede">Find food near a street address, campus, neighborhood, or city.</p><button className="button primary" onClick={locate} disabled={busy === 'location'}>{busy === 'location' ? 'Finding your location…' : 'Use my location'}</button><p className="small">Choose your current location, or enter an address below.</p>{session?.dataMode === 'demo' && <div className="city-shortcuts">{BAY_AREAS.map(area => <button key={area.label} className="button" onClick={() => chooseLocation(area, area.label)}>{area.label}</button>)}</div>}<LocationSearch proximity={location} onSelect={area => chooseLocation(area, area.label)} />{location && <button className="text-button" onClick={() => setStage('explore')}>Back to results</button>}</section>}
 
       {stage === 'explore' && <section><div className="explore-heading"><div><p className="eyebrow">Picked for you · {areaLabel}</p><h1>What sounds good?</h1></div><button className="button" onClick={() => setStage('location')}>Change area</button></div><div className="discover-toolbar"><div className="tabs" aria-label="Discovery type"><button aria-pressed={filters.mode === 'for-you'} onClick={() => updateFilters({ mode: 'for-you' })}>For you</button><button aria-pressed={filters.mode === 'fusion'} onClick={() => updateFilters({ mode: 'fusion' })}>Fusion finds</button></div><button className="button mobile-map-toggle" onClick={() => setShowMap(!showMap)} aria-pressed={showMap}>{showMap ? 'Show list' : 'Show map'}</button></div>
         <form className="discovery-search" onSubmit={event => { event.preventDefault(); updateFilters({ query: queryDraft.trim() }); }}><label htmlFor="food-search" className="sr-only">Search dishes or restaurant names</label><input id="food-search" value={queryDraft} onChange={event => setQueryDraft(event.target.value)} maxLength={150} placeholder="Noodles, dumplings, a restaurant name…" /><button className="button">Search</button></form><p className="small area-search-help">Looking for a street, campus, or city? <button className="text-button" onClick={() => setStage('location')}>Change area</button></p><div className="filters"><label>Distance<select value={filters.radiusKm} onChange={event => updateFilters({ radiusKm: Number(event.target.value) })}><option value="2">About 1 mile</option><option value="5">About 3 miles</option><option value="15">About 9 miles</option><option value="50">About 30 miles</option></select></label><label>Price<select value={filters.maxPrice} onChange={event => updateFilters({ maxPrice: Number(event.target.value) })}><option value="4">Any price</option><option value="1">$</option><option value="2">Up to $$</option><option value="3">Up to $$$</option></select></label><label>Cuisine<select value={filters.cuisine} onChange={event => updateFilters({ cuisine: event.target.value })}><option value="">All East Asian</option><option value="Chinese">Chinese</option><option value="Taiwanese">Taiwanese</option><option value="Japanese">Japanese</option><option value="Korean">Korean</option></select></label></div>
@@ -337,8 +340,8 @@ export default function EastEatsApp() {
 
       {stage === 'saved' && <section><p className="eyebrow">For another day</p><h1>Your saved spots.</h1>{savedPlaces.length === 0 ? <div className="empty"><Bowl /><h2>A good meal to look forward to</h2><p>Save a restaurant while exploring, and it’ll be waiting here.</p><button className="button primary" onClick={() => setStage(location ? 'explore' : 'location')}>Find somewhere to eat</button></div> : <div className="saved-grid">{savedPlaces.map(restaurant => <article className="saved-card" key={restaurant.id}><RestaurantPhoto restaurant={restaurant} /><div className="card-content"><p className="eyebrow">{restaurant.city}</p><button className="restaurant-title" onClick={() => setSelected({ restaurant, score: 0, distanceKm: 0, confidence: restaurant.features?.confidence ?? 0, explanation: 'A place you saved to explore later.' })}>{restaurant.name}</button><p>{restaurant.cuisines.join(' · ')} · {priceLabel(restaurant.priceLevel)}</p><button className="button" onClick={() => void toggleSaved(restaurant)}>Remove from Saved</button></div></article>)}</div>}</section>}
     </main>
-    {session?.user && profile && stage !== 'loading' && stage !== 'login' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' || stage === 'location' ? 'page' : undefined} onClick={() => setStage(location ? 'explore' : 'location')}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>}
-    <footer className="site-footer">Food first. Your tastes, always.<span>Berkeley · Oakland · San Francisco</span></footer>
+    {session?.user && profile && stage !== 'loading' && stage !== 'login' && stage !== 'location' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' ? 'page' : undefined} onClick={() => setStage(location ? 'explore' : 'location')}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>}
+    <footer className="site-footer">Food first. Your tastes, always.<span>East Asian favorites. New places to try.</span></footer>
     {selected && <Details item={selected} saved={savedPlaces.some(place => place.id === selected.restaurant.id)} saving={savingIds.includes(selected.restaurant.id)} onSave={() => void toggleSaved(selected.restaurant)} onClose={closeDetails} />}
   </div>;
 }
