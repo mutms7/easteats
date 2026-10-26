@@ -14,7 +14,7 @@ const {data,error}=await admin.auth.admin.createUser({email:`easteats-search-${r
 if(error||!data.user)throw new Error('Could not create isolated acceptance account.');
 const id=data.user.id,jar=new Map<string,string>();
 const client=createServerClient(e.NEXT_PUBLIC_SUPABASE_URL,e.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,{cookies:{getAll:()=>[...jar].map(([name,value])=>({name,value})),setAll:values=>{for(const {name,value} of values)jar.set(name,value);}}});
-const proof:{query:string;city:string;startedAt:string;jobId?:string;matches?:{name:string;address:string}[];status?:string;cleanup?:boolean}={query:'Pho99',city:'Coquitlam',startedAt:new Date().toISOString()};
+const proof:{query:string;city:string;searchId:string;startedAt:string;jobId?:string;matches?:{name:string;address:string}[];status?:string;cleanup?:boolean}={query:'Pho99',city:'Coquitlam',searchId:randomUUID(),startedAt:new Date().toISOString()};
 mkdirSync('.local',{recursive:true});
 const save=()=>writeFileSync(proofPath,JSON.stringify(proof,null,2));save();
 async function api(path:string,body?:unknown){
@@ -27,7 +27,7 @@ try{
  if(link.error||!link.data.properties.hashed_token)throw new Error('Could not sign in the acceptance account.');
  const signed=await client.auth.verifyOtp({type:'magiclink',token_hash:link.data.properties.hashed_token});
  if(signed.error)throw new Error('Acceptance sign-in failed.');
- let result=await api('/api/places/search',{query:proof.query,city:proof.city});
+ let result=await api('/api/places/search',{query:proof.query,city:proof.city,searchId:proof.searchId});
  proof.jobId=result.job?.id;save();
  if(!proof.jobId)throw new Error('Search did not return a live Google Maps job.');
  console.log(JSON.stringify({phase:'live lookup queued',jobId:proof.jobId,immediateMatches:result.items.length}));
@@ -36,7 +36,7 @@ try{
  while(Date.now()<deadline){
   const state=(await api(`/api/jobs/${proof.jobId}`)).job.status;
   if(state!==previous){console.log(JSON.stringify({phase:state}));previous=state;}
-  result=await api('/api/places/search',{query:proof.query,city:proof.city});
+  result=await api('/api/places/search',{query:proof.query,city:proof.city,searchId:proof.searchId});
   if(state==='succeeded'){
    proof.matches=result.items.map((r:{name:string;address:string})=>({name:r.name,address:r.address}));
    if(!proof.matches?.some(r=>/pho\s*99/i.test(r.name.normalize('NFD').replace(/\p{M}/gu,''))&&/Coquitlam/i.test(r.address)))throw new Error('Live results did not contain Pho 99 in Coquitlam.');

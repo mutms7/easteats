@@ -35,6 +35,8 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
   let processed=0,failed=0;
   for (const job of jobs) {
     const favoriteSearch=job.kind==='favorite-search';
+    const discovery=job.kind==='discovery';
+    const businessSearch=favoriteSearch||discovery;
     try {
       if (!job.run_id) {
         const reservation=await rpcValue<string|null>(rpc,'reserve_usage',{p_provider:'apify',p_operation:`refresh:${job.id}`,p_reserved_usd:1});
@@ -42,7 +44,7 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
         await update(rpc,job.id,'starting',{p_reservation_id:reservation});
         // Never retry an ambiguous start. Reservation remains held until reconciled.
         try {
-          const run=await apify.start({...job.input,maxPlaces:favoriteSearch?5:20,maxReviews:favoriteSearch?0:40},1,deps.webhookUrl,deps.webhookSecret);
+          const run=await apify.start({...job.input,maxPlaces:favoriteSearch?5:20,maxReviews:businessSearch?0:40},1,deps.webhookUrl,deps.webhookSecret);
           await update(rpc,job.id,'running',{p_run_id:run.id,p_dataset_id:run.defaultDatasetId});
         } catch { await update(rpc,job.id,'uncertain',{p_error:'Launch outcome unknown; manual reconciliation required'}); failed++; }
         processed++; continue;
@@ -54,20 +56,23 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
         await update(rpc,job.id,'failed',{p_error:'Restaurant source refresh failed'}); failed++; continue;
       }
       const completed=run.status==='SUCCEEDED';
-      // Favorite lookup needs business matches, not review analysis. Publish any
-      // source records already available while the Actor is still finishing.
+      // Discovery and favorite lookup publish business matches immediately.
+      // Separate details jobs retain review analysis without blocking search.
       const datasetId=run.defaultDatasetId||job.dataset_id;
-      if (!completed && (!favoriteSearch||!datasetId||!['READY','RUNNING'].includes(run.status))) { await update(rpc,job.id,'running'); continue; }
+      if (!completed && (!businessSearch||!datasetId||!['READY','RUNNING'].includes(run.status))) { await update(rpc,job.id,'running'); continue; }
       if (!datasetId) throw new Error('Restaurant source dataset is unavailable');
       if (completed && job.reservation_id && Number.isFinite(run.usageTotalUsd)) await rpcValue(rpc,'settle_usage',{p_id:job.reservation_id,p_actual_usd:run.usageTotalUsd});
-      const pageSize=favoriteSearch?5:1;
+      const pageSize=favoriteSearch?5:discovery?20:1;
       const rows=await apify.dataset(datasetId,job.cursor_offset,pageSize);
       let offset=job.cursor_offset;
       for (const row of rows) {
         const place=normalizePlace(row);
         if (place) {
-          await rpcValue(rpc,'ingest_place',{p_record:place.restaurant,p_reviews:favoriteSearch?[]:place.reviews});
-          if (!favoriteSearch && place.reviews.length && deps.anthropicKey) {
+          await rpcValue(rpc,'ingest_place',{p_record:place.restaurant,p_reviews:businessSearch?[]:place.reviews});
+          // Preserve the provider's match set so dish/name searches need not
+          // rediscover their results through a local full-string name filter.
+          if (businessSearch) await rpcValue(rpc,'record_search_place',{p_job_id:job.id,p_place_id:place.restaurant.id});
+          if (!businessSearch && place.reviews.length && deps.anthropicKey) {
             const hash=await sourceHash(place.reviews,deps.extractionVersion,deps.extractModel);
             const cached=await rpcValue<{sourceHash:string;features:RestaurantFeatures}|null>(rpc,'get_cached_features',{p_place_id:place.restaurant.id});
             if (cached?.sourceHash!==hash) {
@@ -91,8 +96,8 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
         await update(rpc,job.id,completed?'ingesting':'running',{p_offset:offset});
       }
       let finished=completed&&rows.length<pageSize;
-      // Five exact matches should not need another minute merely to discover EOF.
-      if (favoriteSearch&&completed&&rows.length===pageSize) finished=(await apify.dataset(datasetId,offset,1)).length===0;
+      // A full business page should not wait another minute merely to find EOF.
+      if (businessSearch&&completed&&rows.length===pageSize) finished=(await apify.dataset(datasetId,offset,1)).length===0;
       await update(rpc,job.id,finished?'succeeded':completed?'ingesting':'running',{p_offset:offset});
       processed++;
     } catch (error) {

@@ -1,4 +1,4 @@
-import { tasteInputSchema, type Favorite, type RankedRestaurant, type Restaurant } from '@/lib/contracts';
+import { tasteInputSchema, type DiscoverResponse, type Favorite, type RankedRestaurant, type Restaurant } from '@/lib/contracts';
 
 export const REASONS = ['The food itself', 'Regional dishes', 'Great value', 'Spice and bold flavors', 'Atmosphere', 'Friendly service'] as const;
 export function authNotice(search: string): string {
@@ -34,4 +34,24 @@ export function safeExternalUrl(value: string | null): string | undefined {
 export function fitLabel(item: RankedRestaurant): string {
   if (item.confidence < 0.35) return 'Still getting to know this spot';
   return item.score >= 65 ? 'Strong fit' : 'Worth exploring';
+}
+
+/** Append new places immediately; only an existing-place reorder needs consent. */
+export function mergeDiscoveryResults(current: DiscoverResponse | null, incoming: DiscoverResponse): { applied: DiscoverResponse; pending: DiscoverResponse | null } {
+  if (!current?.items.length) return { applied: incoming, pending: null };
+  const currentIds = new Set(current.items.map(item => item.restaurant.id));
+  const incomingById = new Map(incoming.items.map(item => [item.restaurant.id, item]));
+  const existingOrder = current.items.filter(item => incomingById.has(item.restaurant.id)).map(item => item.restaurant.id);
+  const rankedExistingOrder = incoming.items.filter(item => currentIds.has(item.restaurant.id)).map(item => item.restaurant.id);
+  const orderChanged = existingOrder.some((id, index) => id !== rankedExistingOrder[index]);
+  // Partial pages must not erase cached places. A completed source snapshot is
+  // authoritative, so removed, closed, or no-longer-matching places leave now.
+  const retained = incoming.job?.status === 'succeeded'
+    ? current.items.filter(item => incomingById.has(item.restaurant.id))
+    : current.items;
+  const items = [
+    ...retained.map(item => incomingById.get(item.restaurant.id) ?? item),
+    ...incoming.items.filter(item => !currentIds.has(item.restaurant.id)),
+  ];
+  return { applied: { ...incoming, items }, pending: orderChanged ? incoming : null };
 }

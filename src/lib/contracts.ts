@@ -15,10 +15,10 @@ export const tasteProfileSchema = z.object({ version: z.number().int().positive(
 export type TasteProfile = z.infer<typeof tasteProfileSchema>;
 export const locationSchema = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
 export type Location = z.infer<typeof locationSchema>;
-export const discoverInputSchema = locationSchema.extend({ radiusKm: z.number().min(0.5).max(50).default(5), mode: z.enum(['for-you','fusion']).default('for-you'), query: z.string().max(150).default(''), cuisine: z.string().max(80).default(''), maxPrice: z.number().int().min(1).max(4).optional() });
+export const discoverInputSchema = locationSchema.extend({ searchId: z.string().uuid().optional(), radiusKm: z.number().min(0.5).max(50).default(5), mode: z.enum(['for-you','fusion']).default('for-you'), query: z.string().max(150).default(''), cuisine: z.string().max(80).default(''), maxPrice: z.number().int().min(1).max(4).optional() });
 export type DiscoverInput = z.infer<typeof discoverInputSchema>;
 export interface RankedRestaurant { restaurant: Restaurant; score: number; distanceKm: number; explanation: string; confidence: number }
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'budget_limited' | 'uncertain';
 export interface RefreshJob { id: string; status: JobState; kind: 'discovery' | 'details' | 'favorite-search'; createdAt: string; error?: string }
 export interface Review { id: string; text: string; stars: number | null; publishedAt: string | null; sourceUrl: string }
-export interface DiscoverResponse { items: RankedRestaurant[]; job: RefreshJob | null; profileVersion: number; dataMode: 'live' | 'demo'; refreshing: boolean; warning?: string }
+export interface DiscoverResponse { items: RankedRestaurant[]; job: RefreshJob | null; enrichmentJob?: RefreshJob | null; searchPhase?: 'places' | 'reviews' | 'complete'; profileVersion: number; dataMode: 'live' | 'demo'; refreshing: boolean; warning?: string }

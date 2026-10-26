@@ -33,7 +33,7 @@ test('cached favorite matches remain selectable during a live Google Maps check'
 
 test('a delayed favorite search stays pending and shows Pho99 without resubmission', async ({ page }) => {
   let polls = 0;
-  const submitted: { query: string; city: string }[] = [];
+  const submitted: { query: string; city: string; searchId: string }[] = [];
   await page.route('**/api/places/search', route => {
     submitted.push(route.request().postDataJSON());
     return route.fulfill({ json: submitted.length === 1 ? { items: [], job: queued, dataMode: 'live' } : { items: [fixturePlace], job: null, dataMode: 'live' } });
@@ -55,8 +55,31 @@ test('a delayed favorite search stays pending and shows Pho99 without resubmissi
   await expect(page.getByRole('button', { name: 'Add favorite', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Search results for Pho99' })).toBeVisible();
   await expect(page.getByRole('status')).toHaveCount(0);
-  expect(submitted).toEqual([{ query: 'Pho99', city: 'Coquitlam' }, { query: 'Pho99', city: 'Coquitlam' }]);
+  expect(submitted[0].searchId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(submitted).toEqual([{ query: 'Pho99', city: 'Coquitlam', searchId: submitted[0].searchId }, { query: 'Pho99', city: 'Coquitlam', searchId: submitted[0].searchId }]);
   await expect(page.getByRole('textbox', { name: 'Restaurant name' })).toHaveValue('Unsubmitted draft');
+});
+
+test('repeating a favorite search makes a new intent while polling keeps its original ID', async ({ page }) => {
+  const submitted: { query: string; city: string; searchId: string }[] = [];
+  const seen = new Set<string>();
+  await page.route('**/api/places/search', route => {
+    const input = route.request().postDataJSON() as { query: string; city: string; searchId: string };
+    submitted.push(input);
+    const first = !seen.has(input.searchId); seen.add(input.searchId);
+    return route.fulfill({ json: { items: first ? [] : [fixturePlace], job: first ? { ...queued, id: input.searchId } : null, dataMode: 'live' } });
+  });
+  await page.route('**/api/jobs/*', route => route.fulfill({ json: { job: { ...queued, status: 'succeeded' } } }));
+  await openQuestionnaire(page);
+  await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Searching Google Maps…');
+  await page.clock.fastForward(3100);
+  await expect(page.getByRole('button', { name: 'Add favorite', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
+  await expect.poll(() => submitted.length).toBe(3);
+  expect(submitted[0].searchId).toBe(submitted[1].searchId);
+  expect(submitted[2].searchId).not.toBe(submitted[0].searchId);
+  expect(submitted[2].query).toBe('Pho99');
 });
 
 test('an obsolete job cannot overwrite a newer favorite search', async ({ page }) => {

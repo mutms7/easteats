@@ -1,8 +1,10 @@
 import {it,expect} from 'vitest';
-import {refreshPlan} from '@/server/refresh-plan';
+import {refreshPlan,enrichmentPlan} from '@/server/refresh-plan';
 import {demoRestaurants} from '@/server/demo';
 const input={lat:37.871234,lng:-122.273456,radiusKm:5,mode:'for-you' as const,query:'',cuisine:''};
 const now=Date.parse('2026-10-25T00:00:00Z');
-it('checks one stable daily area job regardless of display filters',()=>{const r={...demoRestaurants[0],fetchedAt:new Date(now).toISOString(),features:{...demoRestaurants[0].features!,updatedAt:new Date(now).toISOString()}};const plan=refreshPlan([r],input,now);expect(plan?.kind).toBe('discovery');expect(refreshPlan([r],{...input,maxPrice:1,query:'dumplings',cuisine:'Japanese'},now)).toEqual(plan);});
-it('refreshes stale details independently from the daily discovery cache',()=>{const r={...demoRestaurants[0],fetchedAt:new Date(now-7*3600000).toISOString()};expect(refreshPlan([r],input,now)).toEqual({kind:'details',input:{urls:[r.sourceUrl]}});});
+it('starts discovery even with fresh cached places',()=>{const r={...demoRestaurants[0],fetchedAt:new Date(now).toISOString()};expect(refreshPlan([r],input,now).kind).toBe('discovery');});
+it('does not replace a submitted place search with slow review enrichment',()=>{const r={...demoRestaurants[0],features:null};expect(refreshPlan([r],input,now).kind).toBe('discovery');expect(enrichmentPlan([r],now)).toEqual({urls:[r.sourceUrl]});});
+it('sends the submitted restaurant or dish query to Apify',()=>expect(refreshPlan([],{...input,query:'ramen'},now).input).toMatchObject({query:'ramen'}));
+it('avoids re-extracting still-fresh evidence',()=>{const r={...demoRestaurants[0],features:{...demoRestaurants[0].features!,updatedAt:new Date(now).toISOString()}};expect(enrichmentPlan([r],now)).toBe(null);});
 it('persists only coarse location for a cold-area search',()=>{expect(refreshPlan([],input,now)).toEqual({kind:'discovery',input:{lat:37.87,lng:-122.27,radiusKm:5,mode:'for-you'}});});

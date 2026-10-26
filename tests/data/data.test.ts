@@ -79,7 +79,7 @@ describe('Apify adapter',()=>{
   });
 });
 
-const queueJob={id:'job1',status:'running',kind:'discovery',input:{query:'Noodles',city:'Berkeley'},run_id:'run1',dataset_id:'dataset1',reservation_id:'apify-budget',cursor_offset:0};
+const queueJob={id:'job1',status:'running',kind:'details',input:{urls:['https://www.google.com/maps?cid=1']},run_id:'run1',dataset_id:'dataset1',reservation_id:'apify-budget',cursor_offset:0};
 function dependencies(override:Partial<WorkerDependencies>={},responses:Record<string,unknown>={}) {
   const calls:Array<{name:string;args?:Record<string,unknown>}>=[];
   const rpc:Rpc=async(name,args)=>{calls.push({name,args});return {data:name in responses?responses[name]:name==='claim_refresh_jobs'?[queueJob]:name==='reserve_usage'?'reservation1':null,error:null};};
@@ -89,6 +89,58 @@ function dependencies(override:Partial<WorkerDependencies>={},responses:Record<s
 }
 
 describe('durable worker',()=>{
+  it('starts fresh discovery with twenty places and zero reviews',async()=>{
+    const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'discovery',run_id:null,input:{query:'East Asian restaurant',city:'University Avenue, Waterloo'}}]});
+    deps.apify.start=vi.fn(async()=>({id:'discovery-run',actId:'actor',status:'READY',defaultDatasetId:'discovery-dataset'}));
+    await processRefreshJobs(deps);
+    expect(deps.apify.start).toHaveBeenCalledWith({query:'East Asian restaurant',city:'University Avenue, Waterloo',maxPlaces:20,maxReviews:0},1,undefined,undefined);
+    expect(calls.find(c=>c.name==='reserve_usage')?.args?.p_reserved_usd).toBe(1);
+    expect(deps.extract).not.toHaveBeenCalled();
+  });
+  it('publishes all twenty discovery businesses without waiting for review extraction',async()=>{
+    const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'discovery'}]});
+    deps.apify.dataset=vi.fn(async(_id,offset)=>offset===0?Array.from({length:20},(_,i)=>({...place,placeId:`waterloo-${i}`,city:'Waterloo'})):[]);
+    deps.extract=vi.fn(async()=>{throw new Error('Discovery must not invoke Claude');});
+    expect(await processRefreshJobs(deps)).toEqual({processed:1,failed:0});
+    const ingested=calls.filter(c=>c.name==='ingest_place');
+    expect(ingested).toHaveLength(20);
+    expect(ingested.every(c=>Array.isArray(c.args?.p_reviews)&&c.args.p_reviews.length===0)).toBe(true);
+    expect(calls.filter(c=>c.name==='record_search_place').map(c=>c.args)).toEqual(Array.from({length:20},(_,i)=>({p_job_id:'job1',p_place_id:`waterloo-${i}`})));
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded'&&c.args?.p_offset===20)).toBe(true);
+    expect(deps.apify.dataset).toHaveBeenNthCalledWith(1,'dataset1',0,20);
+    expect(deps.apify.dataset).toHaveBeenNthCalledWith(2,'dataset1',20,1);
+    expect(deps.extract).not.toHaveBeenCalled();
+    expect(calls.filter(c=>c.name==='reserve_usage'&&c.args?.p_provider==='anthropic')).toHaveLength(0);
+  });
+  it('makes partial discovery businesses visible without settling an unfinished source run',async()=>{
+    const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'discovery',cursor_offset:3}]});
+    deps.apify.getRun=vi.fn(async()=>({id:'run1',actId:'actor',status:'RUNNING',defaultDatasetId:'dataset1',usageTotalUsd:.01}));
+    deps.apify.dataset=vi.fn(async()=>Array.from({length:20},(_,i)=>({...place,placeId:`partial-waterloo-${i}`})));
+    await processRefreshJobs(deps);
+    expect(deps.apify.dataset).toHaveBeenCalledWith('dataset1',3,20);
+    expect(calls.filter(c=>c.name==='ingest_place')).toHaveLength(20);
+    expect(calls.filter(c=>c.name==='record_search_place')).toHaveLength(20);
+    const recorded=calls.findIndex(c=>c.name==='record_search_place'&&c.args?.p_place_id==='partial-waterloo-0');
+    const checkpoint=calls.findIndex(c=>c.name==='update_refresh_job'&&c.args?.p_offset===4);
+    expect(recorded).toBeGreaterThan(-1);expect(recorded).toBeLessThan(checkpoint);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='running'&&c.args?.p_offset===23)).toBe(true);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded')).toBe(false);
+    expect(calls.some(c=>c.name==='settle_usage')).toBe(false);
+    expect(deps.extract).not.toHaveBeenCalled();
+  });
+  it('retains review scraping and Claude extraction for separate detail jobs',async()=>{
+    const {deps,calls}=dependencies();
+    await processRefreshJobs(deps);
+    expect(deps.apify.dataset).toHaveBeenCalledWith('dataset1',0,1);
+    expect(calls.find(c=>c.name==='ingest_place')?.args?.p_reviews).toHaveLength(1);
+    expect(deps.extract).toHaveBeenCalledTimes(1);
+    expect(calls.some(c=>c.name==='record_search_place')).toBe(false);
+    expect(calls.some(c=>c.name==='reserve_usage'&&c.args?.p_provider==='anthropic')).toBe(true);
+    const pending=dependencies({}, {claim_refresh_jobs:[{...queueJob,run_id:null}]});
+    pending.deps.apify.start=vi.fn(async()=>({id:'details-run',actId:'actor',status:'READY',defaultDatasetId:'details-dataset'}));
+    await processRefreshJobs(pending.deps);
+    expect(pending.deps.apify.start).toHaveBeenCalledWith({urls:['https://www.google.com/maps?cid=1'],maxPlaces:20,maxReviews:40},1,undefined,undefined);
+  });
   it('starts favorite lookup with five places and zero reviews, retaining the same spending cap',async()=>{
     const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'favorite-search',run_id:null,input:{query:'Pho 99',city:'Coquitlam'}}]});
     deps.apify.start=vi.fn(async()=>({id:'favorite-run',actId:'actor',status:'READY',defaultDatasetId:'favorite-dataset'}));
@@ -105,6 +157,7 @@ describe('durable worker',()=>{
     const ingested=calls.filter(c=>c.name==='ingest_place');
     expect(ingested).toHaveLength(5);
     expect(ingested.every(c=>Array.isArray(c.args?.p_reviews)&&c.args.p_reviews.length===0)).toBe(true);
+    expect(calls.filter(c=>c.name==='record_search_place').map(c=>c.args)).toEqual(Array.from({length:5},(_,i)=>({p_job_id:'job1',p_place_id:`favorite-${i}`})));
     expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded'&&c.args?.p_offset===5)).toBe(true);
     expect(deps.apify.dataset).toHaveBeenNthCalledWith(1,'dataset1',0,5);
     expect(deps.apify.dataset).toHaveBeenNthCalledWith(2,'dataset1',5,1);
@@ -130,7 +183,7 @@ describe('durable worker',()=>{
     expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded')).toBe(false);
     expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='running')).toBe(true);
   });
-  it('does not change discovery processing before its source run completes',async()=>{
+  it('keeps detailed review processing gated on source completion',async()=>{
     const {deps}=dependencies();
     deps.apify.getRun=vi.fn(async()=>({id:'run1',actId:'actor',status:'RUNNING',defaultDatasetId:'dataset1'}));
     await processRefreshJobs(deps);
@@ -151,7 +204,7 @@ describe('durable worker',()=>{
     expect(deps.apify.start).not.toHaveBeenCalled();
     expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='budget_limited')).toBe(true);
   });
-  it('ingests small pages, checkpoints, and explicitly releases the lease',async()=>{
+  it('ingests detailed review pages, checkpoints, and explicitly releases the lease',async()=>{
     const {deps,calls}=dependencies();
     expect(await processRefreshJobs(deps)).toEqual({processed:1,failed:0});
     expect(calls.find(c=>c.name==='ingest_place')?.args?.p_record).toMatchObject({id:'place-1'});

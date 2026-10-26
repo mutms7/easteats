@@ -39,7 +39,7 @@ In Supabase URL Configuration set Site URL to `http://localhost:3000` and allow 
 
 ### Database and workers
 
-The six migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
+The eight migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
 
 `refresh-worker` and `apify-webhook` are deployed and configured. Their credentials are encrypted in Supabase Vault, accessible only through service-only functions. The fourth migration installs a one-minute schedule, which dispatches work only while active jobs exist. The worker returns an authenticated HTTP 202 before processing in the background. Built-in Supabase service credentials provide its bootstrap connection.
 
@@ -51,17 +51,17 @@ npm run worker:once
 npm run worker
 ```
 
-The website can enqueue jobs independently. The hosted schedule keeps processing without the local runner. No schedule contains a plaintext credential. If a launch's outcome is unknown, the reservation stays held and the job requires reconciliation rather than an automatic second paid launch. Discovery enrichment handles one restaurant per invocation; favorite lookups publish up to five businesses at a time without waiting for review analysis. Existing and partial results stay usable.
+The website can enqueue jobs independently. The hosted schedule keeps processing without the local runner. No schedule contains a plaintext credential. If a launch's outcome is unknown, the reservation stays held and the job requires reconciliation rather than an automatic second paid launch. Discovery publishes up to 20 businesses per invocation, favorites up to five. Review analysis runs as separate detail work, one restaurant per invocation. Existing and partial results stay usable.
 
 ## Behavior
 
 Google sign-in precedes the questionnaire. Add one to five favorite restaurants anywhere, with reasons. Claude compiles hidden, validated taste weights; the app shows an editable interpretation. Location is requested when choosing nearby recommendations. Exact user coordinates aren't stored; refresh areas are rounded to two decimal places.
 
-Every submitted favorite search checks Apify's Google Maps scraper through a durable job, while immediately returning cached matches. The same normalized query and city share a run for 24 hours. Interactive lookups take priority, request five businesses with zero reviews, publish partial results, and skip Claude review analysis. The UI shows “Searching Google Maps…” until the lookup finishes, then updates automatically. Accents and spaces match consistently, including `Pho99`, `Pho 99`, and `Phở 99`. Search failures and the three-minute waiting limit are shown as unfinished searches, rather than empty results.
+Every explicit favorite or discovery search starts a fresh Apify Google Maps lookup. Repeating the same search also starts a new run. Each submission carries a unique `searchId`; polling reuses that ID, including after terminal outcomes, so automatic checks cannot create duplicate paid calls. Interactive place lookups request zero reviews and publish available businesses immediately. Review enrichment follows separately. The list and map automatically append new places, fit every matching pin, and keep failed or pending searches distinct from empty results. See [the full search and map fix documentation](docs/search-and-map-fix.md).
 
 Restaurant order is calculated in code from food evidence, taste match, value, distance, service, and atmosphere. Google stars are displayed separately and never create a low-rating bonus. Cleanliness review concerns remain separate and visible. Missing features stay neutral with reduced confidence. Off-topic scraper results without East Asian cuisine evidence aren't included in discovery.
 
-Cached results remain usable while bounded refreshes run. Place details expire after six hours, area discovery after24hours, and review features after seven days. Identical jobs share work. Fictional demo data never enters the live database. The explicit local demo requires `EAST_EATS_DEMO=true` and is disabled in production.
+Cached results remain usable while bounded searches run. Noninteractive detail maintenance uses a six-hour cache and food evidence expires after seven days. Manual search IDs bypass the old 24-hour area reuse. Fictional demo data never enters the live database. The explicit local demo requires `EAST_EATS_DEMO=true` and is disabled in production.
 
 Initial database spending ceilings are $120 Apify and $40 Anthropic. Every paid job reserves budget transactionally before calling a provider. Per-run caps are enforced by Apify as well. Review extraction uses up to eight batches of five reviews, with two concurrent requests and a 25-second timeout per request. It settles the full combined charge only after every batch finishes; unknown partial outcomes keep their reservation. These are application ceilings; coding/Design account usage is separate. Changes to `.env` budget values alone do not change database ceilings.
 

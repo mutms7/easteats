@@ -4,13 +4,16 @@ import dynamic from 'next/dynamic';
 import FieldGuideHero from './FieldGuideHero';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DiscoverInput, DiscoverResponse, Favorite, Location, RankedRestaurant, RefreshJob, Restaurant, TasteInput, TasteProfile } from '@/lib/contracts';
-import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, parseDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
+import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, mergeDiscoveryResults, parseDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
 
 const RestaurantMap = dynamic(() => import('./RestaurantMap'), { ssr: false, loading: () => <div className="empty">Loading map…</div> });
 type Session = { user: { id: string; email?: string } | null; configured: boolean; demo: boolean; dataMode: 'live' | 'demo'; profile: TasteProfile | null; answers: TasteInput | null; personalized?:boolean; warning?:string };
 type Stage = 'loading' | 'login' | 'questionnaire' | 'interpretation' | 'location' | 'explore' | 'saved';
-type FavoriteSearch = { id: number; query: string; city: string; startedAt: number; phase: 'searching' | 'complete' | 'stopped' };
+type FavoriteSearch = { id: number; searchId: string; query: string; city: string; startedAt: number; phase: 'searching' | 'complete' | 'stopped' };
 type FavoriteSearchJob = { search: FavoriteSearch; job: RefreshJob };
+type DiscoveryIntent = { id: string; input: DiscoverInput & { searchId: string }; startedAt: number };
+type DiscoveryPayload = DiscoverResponse & { searchPhase?: 'places' | 'reviews' | 'complete'; enrichmentJob?: RefreshJob | null };
+type DiscoveryJob = { job: RefreshJob; intent: DiscoveryIntent; phase: 'places' | 'reviews' };
 const BAY_AREAS = [{ label: 'Berkeley', lat: 37.8715, lng: -122.273 }, { label: 'Oakland', lat: 37.8044, lng: -122.2712 }, { label: 'San Francisco', lat: 37.7749, lng: -122.4194 }];
 
 async function request<T>(url: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
@@ -90,14 +93,17 @@ export default function EastEatsApp() {
   const [queryDraft, setQueryDraft] = useState('');
   const [results, setResults] = useState<DiscoverResponse | null>(null);
   const [pendingResults, setPendingResults] = useState<DiscoverResponse | null>(null);
-  const [job, setJob] = useState<{ job: RefreshJob; purpose: 'favorites' | 'discovery' } | null>(null);
+  const [discoveryIntent, setDiscoveryIntent] = useState<DiscoveryIntent | null>(null);
+  const activeDiscovery = useRef<DiscoveryIntent | null>(null);
+  const [discoveryJob, setDiscoveryJob] = useState<DiscoveryJob | null>(null);
+  const [discoveryPhase, setDiscoveryPhase] = useState<'idle' | 'places' | 'reviews' | 'complete' | 'stopped'>('idle');
+  const appliedResults = useRef<DiscoverResponse | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState<Restaurant[]>([]);
   const [savingIds, setSavingIds] = useState<string[]>([]);
   const savingRef = useRef(new Set<string>());
   const [selected, setSelected] = useState<RankedRestaurant | null>(null);
   const mounted = useRef(true);
-  const refreshRef = useRef<() => Promise<void>>(async () => {});
 
   const boot = useCallback(async () => {
     setError('');
@@ -120,33 +126,51 @@ export default function EastEatsApp() {
   }, [boot]);
   useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(`east-eats:taste:${session.user.id}`, JSON.stringify(favorites)); } catch { /* A private browsing storage limit must not block the questionnaire. */ } } }, [favorites, draftReady, session?.user]);
 
-  const discover = useCallback(async (offerUpdate = false, signal?: AbortSignal) => {
-    if (!location || !profile) return;
-    const input: DiscoverInput = { ...location, ...filters };
-    const data = await request<DiscoverResponse & { warning?: string }>('/api/discover', input, undefined, signal);
-    if (offerUpdate) setPendingResults(data); else { setResults(data); setPendingResults(null); }
-    if (data.job && ['queued', 'running'].includes(data.job.status)) setJob({ job: data.job, purpose: 'discovery' });
-    if (data.job?.status === 'budget_limited') setNotice('We are showing saved results while live refreshes are paused.');
+  const discover = useCallback(async (intent: DiscoveryIntent, offerUpdate = false, signal?: AbortSignal) => {
+    const data = await request<DiscoveryPayload>('/api/discover', intent.input, undefined, signal);
+    if (signal?.aborted || activeDiscovery.current?.id !== intent.id) return;
+    // Every newly found place reaches the list and map immediately. Preserve
+    // the existing order while applying fresh metadata, and offer only reorders.
+    const next = offerUpdate ? mergeDiscoveryResults(appliedResults.current, data) : { applied: data, pending: null };
+    appliedResults.current = next.applied; setResults(next.applied); setPendingResults(next.pending);
+    const businessPending = data.job && ['queued', 'running'].includes(data.job.status);
+    const reviewPending = data.enrichmentJob && ['queued', 'running'].includes(data.enrichmentJob.status);
+    const nextJob = businessPending ? data.job : reviewPending ? data.enrichmentJob : null;
+    if (nextJob) {
+      const phase = businessPending ? 'places' : 'reviews';
+      setDiscoveryPhase(phase); setDiscoveryJob({ job: nextJob, intent, phase });
+    } else {
+      setDiscoveryJob(null);
+      const failed = (data.job && ['failed', 'uncertain', 'budget_limited'].includes(data.job.status))
+        || (data.dataMode === 'live' && !data.job && Boolean(data.warning));
+      setDiscoveryPhase(failed ? 'stopped' : 'complete');
+      if (failed && !data.warning) setNotice('The live search did not finish. You can keep browsing any saved results.');
+    }
+    if (data.job?.status === 'budget_limited') setNotice('We are showing saved results while live searches are paused.');
     if (data.warning) setNotice(data.warning);
-  }, [location, profile, filters]);
+  }, []);
   useEffect(() => {
-    if (stage !== 'explore' || !location || !profile) return;
+    if (stage !== 'explore' || !discoveryIntent || !profile) return;
     const controller = new AbortController();
-    setBusy('discover'); setError('');
-    discover(false, controller.signal).catch(e => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Could not find nearby places.'); }).finally(() => { if (!controller.signal.aborted) setBusy(''); });
+    setDiscoveryJob(null); setBusy('discover'); setError('');
+    discover(discoveryIntent, false, controller.signal).catch(e => {
+      if (!controller.signal.aborted && activeDiscovery.current?.id === discoveryIntent.id) {
+        setDiscoveryPhase('stopped'); setError(e instanceof Error ? e.message : 'Could not find nearby places.');
+      }
+    }).finally(() => { if (!controller.signal.aborted && activeDiscovery.current?.id === discoveryIntent.id) setBusy(''); });
     return () => controller.abort();
-  }, [stage, discover, location, profile]);
+  }, [stage, discover, discoveryIntent, profile?.version]);
 
   const searchFavorites = useCallback(async () => {
     if (!searchName.trim()) return;
     favoriteRequest.current?.abort();
     const controller = new AbortController();
     favoriteRequest.current = controller;
-    const search: FavoriteSearch = { id: ++favoriteSearchId.current, query: searchName.trim(), city: searchCity.trim(), startedAt: Date.now(), phase: 'searching' };
+    const search: FavoriteSearch = { id: ++favoriteSearchId.current, searchId: crypto.randomUUID(), query: searchName.trim(), city: searchCity.trim(), startedAt: Date.now(), phase: 'searching' };
     setFavoriteSearch(search); setFavoriteJob(null); setSearchResults(null);
     setBusy('search'); setError(''); setNotice('');
     try {
-      const data = await request<{ items: Restaurant[]; job: RefreshJob | null }>('/api/places/search', { query: search.query, city: search.city }, undefined, controller.signal);
+      const data = await request<{ items: Restaurant[]; job: RefreshJob | null }>('/api/places/search', { query: search.query, city: search.city, searchId: search.searchId }, undefined, controller.signal);
       if (controller.signal.aborted || search.id !== favoriteSearchId.current) return;
       setSearchResults(data.items);
       if (data.job && ['queued', 'running'].includes(data.job.status)) setFavoriteJob({ job: data.job, search });
@@ -177,7 +201,7 @@ export default function EastEatsApp() {
     const timeoutMessage = 'This search is taking longer than expected. Your results will be saved. Try the same search again shortly.';
     const deadline = setTimeout(() => { stop(timeoutMessage); controller.abort(); }, Math.max(0, 180_000 - (Date.now() - current.search.startedAt)));
     const updateResults = async (finished: boolean): Promise<'continue' | 'moved' | 'complete'> => {
-      const data = await request<{ items: Restaurant[]; job: RefreshJob | null }>('/api/places/search', { query: current.search.query, city: current.search.city }, undefined, controller.signal);
+      const data = await request<{ items: Restaurant[]; job: RefreshJob | null }>('/api/places/search', { query: current.search.query, city: current.search.city, searchId: current.search.searchId }, undefined, controller.signal);
       if (!isCurrent()) return 'complete';
       setSearchResults(data.items);
       if (data.job && ['queued', 'running'].includes(data.job.status)) {
@@ -209,27 +233,37 @@ export default function EastEatsApp() {
     timer = setTimeout(poll, 3000);
     return () => { cancelled = true; controller.abort(); clearTimeout(timer); clearTimeout(deadline); };
   }, [favoriteJob?.job.id, favoriteJob?.search.id, stage]);
-  refreshRef.current = () => discover(true);
   useEffect(() => {
-    if (!job) return;
+    if (!discoveryJob || stage !== 'explore') return;
+    const current = discoveryJob;
+    const controller = new AbortController();
     let cancelled = false, polls = 0;
     let timer: ReturnType<typeof setTimeout>;
+    const isCurrent = () => !cancelled && activeDiscovery.current?.id === current.intent.id;
+    const stop = (message: string) => {
+      if (!isCurrent()) return;
+      setDiscoveryJob(null); setDiscoveryPhase('stopped'); setNotice(message);
+    };
+    const timeoutMs = current.phase === 'places' ? 180_000 : 300_000;
+    const timeoutMessage = current.phase === 'places' ? 'This area search is taking longer than expected. You can keep browsing any results already found.' : 'Food details are still being checked. You can keep browsing the places we found.';
+    const deadline = setTimeout(() => { stop(timeoutMessage); controller.abort(); }, Math.max(0, timeoutMs - (Date.now() - current.intent.startedAt)));
     const poll = async () => {
+      if (!isCurrent()) return;
       try {
-        const data = await request<{ job: RefreshJob }>(`/api/jobs/${encodeURIComponent(job.job.id)}`);
-        if (cancelled) return;
-        if (data.job.status === 'succeeded') { setJob(null); await refreshRef.current(); return; }
-        if (!['queued', 'running'].includes(data.job.status)) { setJob(null); setNotice(data.job.status === 'budget_limited' ? 'Live refreshes are paused. You can keep browsing saved results.' : 'The refresh did not finish. Your existing results are still available.'); return; }
+        const data = await request<{ job: RefreshJob }>(`/api/jobs/${encodeURIComponent(current.job.id)}`, undefined, undefined, controller.signal);
+        if (!isCurrent()) return;
+        if (data.job.status === 'succeeded') { await discover(current.intent, true, controller.signal); return; }
+        if (!['queued', 'running'].includes(data.job.status)) {
+          stop(data.job.status === 'budget_limited' ? 'Live searches are paused. You can keep browsing saved results.' : 'The live search did not finish. Any places already found are still available.'); return;
+        }
         polls += 1;
-        // Offer partial results while a cold-area scrape is still being enriched.
-        if (polls % 3 === 0) await refreshRef.current();
-        if (polls >= 20) { setJob(null); setNotice('This refresh is taking longer than expected. Try searching again in a little while.'); return; }
-        timer = setTimeout(poll, 3000);
-      } catch { if (!cancelled) { setJob(null); setNotice('We could not check the refresh. Please try again later.'); } }
+        if (polls % 3 === 0) await discover(current.intent, true, controller.signal);
+        if (isCurrent()) timer = setTimeout(poll, 3000);
+      } catch { if (isCurrent() && !controller.signal.aborted) stop('We could not check the live search. You can keep browsing your results.'); }
     };
     timer = setTimeout(poll, 3000);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [job?.job.id]);
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); clearTimeout(deadline); };
+  }, [discoveryJob?.job.id, discoveryJob?.intent.id, discoveryJob?.phase, stage, discover]);
 
   async function submitTaste(event: FormEvent) {
     event.preventDefault(); setError('');
@@ -240,7 +274,17 @@ export default function EastEatsApp() {
       setProfile(data.profile); setPersonalized(data.personalized); setNotice(data.warning ?? ''); setCorrection(''); setStage('interpretation');
     } catch (e) { setError(e instanceof Error ? e.message : 'Your answers are still here. Please try again.'); } finally { setBusy(''); }
   }
-  function chooseLocation(value: Location, label: string) { setLocation(value); setAreaLabel(label); setError(''); setStage('explore'); }
+  function beginDiscovery(value: Location, nextFilters = filters) {
+    const id = crypto.randomUUID();
+    const intent: DiscoveryIntent = { id, input: { ...value, ...nextFilters, searchId: id }, startedAt: Date.now() };
+    activeDiscovery.current = intent; setDiscoveryIntent(intent); setDiscoveryJob(null); setDiscoveryPhase('places');
+    appliedResults.current = null; setResults(null); setPendingResults(null); setNotice('');
+  }
+  function updateFilters(patch: Partial<typeof filters>) {
+    const next = { ...filters, ...patch }; setFilters(next);
+    if (location) beginDiscovery(location, next);
+  }
+  function chooseLocation(value: Location, label: string) { setLocation(value); setAreaLabel(label); setError(''); beginDiscovery(value); setStage('explore'); }
   function locate() {
     setError('');
     if (!navigator.geolocation) { setError('This browser cannot find your location. Enter an area below.'); return; }
@@ -262,7 +306,7 @@ export default function EastEatsApp() {
   async function logout() {
     favoriteSearchId.current += 1; favoriteRequest.current?.abort(); setFavoriteJob(null); setFavoriteSearch(null); setSearchResults(null);
     setBusy('logout'); setError('');
-    try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setDraftReady(false); setResults(null); setSavedPlaces([]); setLocation(null); setJob(null); setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
+    try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setDraftReady(false); setResults(null); setSavedPlaces([]); setLocation(null); activeDiscovery.current = null; setDiscoveryIntent(null); setDiscoveryJob(null); setDiscoveryPhase('idle'); appliedResults.current = null; setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
   }
   const closeDetails = useCallback(() => setSelected(null), []);
 
@@ -286,10 +330,10 @@ export default function EastEatsApp() {
 
       {stage === 'location' && <section><p className="eyebrow">Let’s look around</p><h1>Where are<br />we eating?</h1><p className="lede">Find places nearby, or explore a different neighborhood.</p><button className="button primary" onClick={locate} disabled={busy === 'location'}>{busy === 'location' ? 'Finding your location…' : 'Use my location'}</button><p className="small">We use your location for this search. We don’t save your exact coordinates.</p><div className="city-shortcuts">{BAY_AREAS.map(area => <button key={area.label} className="button" onClick={() => chooseLocation(area, area.label)}>{area.label}</button>)}</div><form className="area-form" onSubmit={findArea}><label htmlFor="area">Or enter a city or neighborhood</label><div className="input-action"><input id="area" value={areaQuery} onChange={event => setAreaQuery(event.target.value)} maxLength={150} required placeholder="Richmond District, San Francisco" /><button className="button" disabled={busy === 'area'}>{busy === 'area' ? 'Finding…' : 'Find area'}</button></div></form>{geocoded.length > 0 && <ul className="area-results">{geocoded.map((area, index) => <li key={index}><button className="button" onClick={() => chooseLocation(area, area.label)}>{area.label}</button></li>)}</ul>}</section>}
 
-      {stage === 'explore' && <section><div className="explore-heading"><div><p className="eyebrow">Picked for you · {areaLabel}</p><h1>What sounds good?</h1></div><button className="button" onClick={() => setStage('location')}>Change area</button></div><div className="discover-toolbar"><div className="tabs" aria-label="Discovery type"><button aria-pressed={filters.mode === 'for-you'} onClick={() => setFilters(current => ({ ...current, mode: 'for-you' }))}>For you</button><button aria-pressed={filters.mode === 'fusion'} onClick={() => setFilters(current => ({ ...current, mode: 'fusion' }))}>Fusion finds</button></div><button className="button mobile-map-toggle" onClick={() => setShowMap(!showMap)} aria-pressed={showMap}>{showMap ? 'Show list' : 'Show map'}</button></div>
-        <form className="discovery-search" onSubmit={event => { event.preventDefault(); setFilters(current => ({ ...current, query: queryDraft.trim() })); }}><label htmlFor="food-search" className="sr-only">Search dishes or restaurants</label><input id="food-search" value={queryDraft} onChange={event => setQueryDraft(event.target.value)} maxLength={150} placeholder="Noodles, dumplings, a favorite dish…" /><button className="button">Search</button></form><div className="filters"><label>Distance<select value={filters.radiusKm} onChange={event => setFilters(current => ({ ...current, radiusKm: Number(event.target.value) }))}><option value="2">About 1 mile</option><option value="5">About 3 miles</option><option value="15">About 9 miles</option><option value="50">About 30 miles</option></select></label><label>Price<select value={filters.maxPrice} onChange={event => setFilters(current => ({ ...current, maxPrice: Number(event.target.value) }))}><option value="4">Any price</option><option value="1">$</option><option value="2">Up to $$</option><option value="3">Up to $$$</option></select></label><label>Cuisine<select value={filters.cuisine} onChange={event => setFilters(current => ({ ...current, cuisine: event.target.value }))}><option value="">All East Asian</option><option value="Chinese">Chinese</option><option value="Taiwanese">Taiwanese</option><option value="Japanese">Japanese</option><option value="Korean">Korean</option></select></label></div>
-        {job?.purpose === 'discovery' && <p className="refresh-status" role="status">Checking for fresh details. These results are ready to browse.</p>}{pendingResults && <button className="button refresh-button" onClick={() => { setResults(pendingResults); setPendingResults(null); }}>Fresh details are ready. Update results</button>}
-        <div className={`discovery-grid ${showMap ? 'show-map' : ''}`}><div className="restaurant-list" aria-busy={busy === 'discover'}>{busy === 'discover' && !results && <div className="empty" role="status">Finding your next spot…</div>}{results?.items.length === 0 && <div className="empty"><Bowl /><h2>Nothing in this area yet</h2><p>Try a wider distance or a different neighborhood. If we’re checking fresh details, results will appear when they’re ready.</p></div>}{results?.items.map((item, index) => <article className="restaurant-card" key={item.restaurant.id}><div className="card-photo"><RestaurantPhoto restaurant={item.restaurant} /><span className="list-position" aria-label={`Recommendation ${index + 1}`}>{index + 1}</span></div><div className="card-content"><p className="eyebrow">{item.restaurant.cuisines.join(' · ') || 'Cuisine details pending'}</p><button className="restaurant-title" onClick={() => setSelected(item)}>{item.restaurant.name}</button><p className="small">{item.restaurant.city} · {priceLabel(item.restaurant.priceLevel)} · {distanceLabel(item.distanceKm)}</p><div className="field-note"><span className="fit-label">{fitLabel(item)}</span><p>{item.explanation}</p></div><div className="card-footer"><span className="small card-source"><span>Google: {item.restaurant.googleRating ?? 'unrated'}{item.restaurant.googleRating !== null ? '/5' : ''}</span><span>Checked {new Date(item.restaurant.fetchedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span><button className="button save-button" aria-label={`${savedPlaces.some(place => place.id === item.restaurant.id) ? 'Unsave' : 'Save'} ${item.restaurant.name}`} aria-pressed={savedPlaces.some(place => place.id === item.restaurant.id)} onClick={() => void toggleSaved(item.restaurant)}>{savedPlaces.some(place => place.id === item.restaurant.id) ? 'Saved' : 'Save'}</button></div></div></article>)}</div><aside className="map-column" aria-label="Map view">{location && <RestaurantMap items={results?.items ?? []} center={location} onSelect={setSelected} onSearchArea={area => { setLocation(area); setAreaLabel('Selected map area'); }} />}</aside></div></section>}
+      {stage === 'explore' && <section><div className="explore-heading"><div><p className="eyebrow">Picked for you · {areaLabel}</p><h1>What sounds good?</h1></div><button className="button" onClick={() => setStage('location')}>Change area</button></div><div className="discover-toolbar"><div className="tabs" aria-label="Discovery type"><button aria-pressed={filters.mode === 'for-you'} onClick={() => updateFilters({ mode: 'for-you' })}>For you</button><button aria-pressed={filters.mode === 'fusion'} onClick={() => updateFilters({ mode: 'fusion' })}>Fusion finds</button></div><button className="button mobile-map-toggle" onClick={() => setShowMap(!showMap)} aria-pressed={showMap}>{showMap ? 'Show list' : 'Show map'}</button></div>
+        <form className="discovery-search" onSubmit={event => { event.preventDefault(); updateFilters({ query: queryDraft.trim() }); }}><label htmlFor="food-search" className="sr-only">Search dishes or restaurant names</label><input id="food-search" value={queryDraft} onChange={event => setQueryDraft(event.target.value)} maxLength={150} placeholder="Noodles, dumplings, a restaurant name…" /><button className="button">Search</button></form><p className="small area-search-help">Looking for a street, campus, or city? <button className="text-button" onClick={() => setStage('location')}>Change area</button></p><div className="filters"><label>Distance<select value={filters.radiusKm} onChange={event => updateFilters({ radiusKm: Number(event.target.value) })}><option value="2">About 1 mile</option><option value="5">About 3 miles</option><option value="15">About 9 miles</option><option value="50">About 30 miles</option></select></label><label>Price<select value={filters.maxPrice} onChange={event => updateFilters({ maxPrice: Number(event.target.value) })}><option value="4">Any price</option><option value="1">$</option><option value="2">Up to $$</option><option value="3">Up to $$$</option></select></label><label>Cuisine<select value={filters.cuisine} onChange={event => updateFilters({ cuisine: event.target.value })}><option value="">All East Asian</option><option value="Chinese">Chinese</option><option value="Taiwanese">Taiwanese</option><option value="Japanese">Japanese</option><option value="Korean">Korean</option></select></label></div>
+        {discoveryPhase === 'places' && <p className="refresh-status" role="status">Searching Google Maps for places in {areaLabel}… Results and map pins appear as they arrive.</p>}{discoveryPhase === 'reviews' && <p className="refresh-status" role="status">Places are ready. We’re checking food details to improve your recommendations.</p>}{pendingResults && <button className="button refresh-button" onClick={() => { appliedResults.current = pendingResults; setResults(pendingResults); setPendingResults(null); }}>Fresh details are ready. Update results</button>}
+        <div className={`discovery-grid ${showMap ? 'show-map' : ''}`}><div className="restaurant-list" aria-busy={busy === 'discover'}>{busy === 'discover' && !results && <div className="empty" role="status">Finding your next spot…</div>}{results?.items.length === 0 && discoveryPhase === 'complete' && <div className="empty"><Bowl /><h2>No matching places found</h2><p>Try a wider distance, a different cuisine, or change the area.</p></div>}{results?.items.map((item, index) => <article className="restaurant-card" key={item.restaurant.id}><div className="card-photo"><RestaurantPhoto restaurant={item.restaurant} /><span className="list-position" aria-label={`Recommendation ${index + 1}`}>{index + 1}</span></div><div className="card-content"><p className="eyebrow">{item.restaurant.cuisines.join(' · ') || 'Cuisine details pending'}</p><button className="restaurant-title" onClick={() => setSelected(item)}>{item.restaurant.name}</button><p className="small">{item.restaurant.city} · {priceLabel(item.restaurant.priceLevel)} · {distanceLabel(item.distanceKm)}</p><div className="field-note"><span className="fit-label">{fitLabel(item)}</span><p>{item.explanation}</p></div><div className="card-footer"><span className="small card-source"><span>Google: {item.restaurant.googleRating ?? 'unrated'}{item.restaurant.googleRating !== null ? '/5' : ''}</span><span>Checked {new Date(item.restaurant.fetchedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span><button className="button save-button" aria-label={`${savedPlaces.some(place => place.id === item.restaurant.id) ? 'Unsave' : 'Save'} ${item.restaurant.name}`} aria-pressed={savedPlaces.some(place => place.id === item.restaurant.id)} onClick={() => void toggleSaved(item.restaurant)}>{savedPlaces.some(place => place.id === item.restaurant.id) ? 'Saved' : 'Save'}</button></div></div></article>)}</div><aside className="map-column" aria-label="Map view">{location && <RestaurantMap items={results?.items ?? []} center={location} selectedId={selected?.restaurant.id} searching={discoveryPhase === 'places'} onSelect={setSelected} onSearchArea={area => chooseLocation(area, 'Selected map area')} />}</aside></div></section>}
 
       {stage === 'saved' && <section><p className="eyebrow">For another day</p><h1>Your saved spots.</h1>{savedPlaces.length === 0 ? <div className="empty"><Bowl /><h2>A good meal to look forward to</h2><p>Save a restaurant while exploring, and it’ll be waiting here.</p><button className="button primary" onClick={() => setStage(location ? 'explore' : 'location')}>Find somewhere to eat</button></div> : <div className="saved-grid">{savedPlaces.map(restaurant => <article className="saved-card" key={restaurant.id}><RestaurantPhoto restaurant={restaurant} /><div className="card-content"><p className="eyebrow">{restaurant.city}</p><button className="restaurant-title" onClick={() => setSelected({ restaurant, score: 0, distanceKm: 0, confidence: restaurant.features?.confidence ?? 0, explanation: 'A place you saved to explore later.' })}>{restaurant.name}</button><p>{restaurant.cuisines.join(' · ')} · {priceLabel(restaurant.priceLevel)}</p><button className="button" onClick={() => void toggleSaved(restaurant)}>Remove from Saved</button></div></article>)}</div>}</section>}
     </main>

@@ -19,12 +19,12 @@ async function api(path:string,body?:unknown,method?:string){
 try{
  const signed=await client.auth.signInWithPassword({email,password});if(signed.error)throw new Error('Test sign-in failed.');
  const session=await api('/api/session');if(session.user?.id!==id)throw new Error('Server did not verify the signed-in test account.');proof.checks.push('verified authenticated session');
- const search=await api('/api/places/search',{query:'Noodle Dynasty',city:'Berkeley'});if(!search.items?.length)throw new Error('Expected cached pilot restaurant.');const restaurant=search.items[0];proof.checks.push('cached favorite search');
+ const search=await api('/api/places/search',{query:'Noodle Dynasty',city:'Berkeley',searchId:randomUUID()});if(!search.items?.length)throw new Error('Expected cached pilot restaurant.');const restaurant=search.items[0];proof.checks.push('cached favorite search');
  const taste=await api('/api/taste',{favorites:[{restaurantId:restaurant.id,name:restaurant.name,city:restaurant.city,reasons:['The food itself','Great value'],notes:'Live integration test: I like handmade noodles and spicy food; table service is less important.'}]});if(!taste.personalized)throw new Error('Live taste compilation did not finish.');proof.checks.push('real Claude profile through authenticated API');
  await api(`/api/saved/${encodeURIComponent(restaurant.id)}`,undefined,'PUT');await api(`/api/saved/${encodeURIComponent(restaurant.id)}`,undefined,'PUT');
  const saved=await api('/api/saved');if(saved.items?.length!==1)throw new Error('Repeated save was not idempotent.');proof.checks.push('idempotent saved places');
  await api(`/api/saved/${encodeURIComponent(restaurant.id)}`,undefined,'DELETE');
- const discovery=await api('/api/discover',{lat:37.8715,lng:-122.273,radiusKm:5,mode:'for-you'});if(!discovery.items?.length||discovery.dataMode!=='live')throw new Error('Expected live cached recommendations.');proof.checks.push('ranked live nearby recommendations');proof.jobId=discovery.job?.id;
+ const discovery=await api('/api/discover',{lat:37.8715,lng:-122.273,radiusKm:5,mode:'for-you',searchId:randomUUID()});if(!discovery.items?.length||discovery.dataMode!=='live')throw new Error('Expected live cached recommendations.');proof.checks.push('ranked live nearby recommendations');proof.jobId=discovery.job?.id;
  if(process.env.NEXT_PUBLIC_MAPTILER_KEY){const geocoded=await api('/api/geocode',{query:'San Jose, California'});if(!geocoded.items?.length)throw new Error('Expected geocoding result.');proof.checks.push('MapTiler geocoding');}
  console.log(JSON.stringify({status:'passed',...proof}));
 }finally{
