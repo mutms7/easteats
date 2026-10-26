@@ -9,6 +9,8 @@ import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, parseDraft
 const RestaurantMap = dynamic(() => import('./RestaurantMap'), { ssr: false, loading: () => <div className="empty">Loading map…</div> });
 type Session = { user: { id: string; email?: string } | null; configured: boolean; demo: boolean; dataMode: 'live' | 'demo'; profile: TasteProfile | null; answers: TasteInput | null; personalized?:boolean; warning?:string };
 type Stage = 'loading' | 'login' | 'questionnaire' | 'interpretation' | 'location' | 'explore' | 'saved';
+type FavoriteSearch = { id: number; query: string; city: string; startedAt: number; phase: 'searching' | 'complete' | 'stopped' };
+type FavoriteSearchJob = { search: FavoriteSearch; job: RefreshJob };
 const BAY_AREAS = [{ label: 'Berkeley', lat: 37.8715, lng: -122.273 }, { label: 'Oakland', lat: 37.8044, lng: -122.2712 }, { label: 'San Francisco', lat: 37.7749, lng: -122.4194 }];
 
 async function request<T>(url: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
@@ -76,6 +78,10 @@ export default function EastEatsApp() {
   const [searchName, setSearchName] = useState('');
   const [searchCity, setSearchCity] = useState('');
   const [searchResults, setSearchResults] = useState<Restaurant[] | null>(null);
+  const [favoriteSearch, setFavoriteSearch] = useState<FavoriteSearch | null>(null);
+  const [favoriteJob, setFavoriteJob] = useState<FavoriteSearchJob | null>(null);
+  const favoriteSearchId = useRef(0);
+  const favoriteRequest = useRef<AbortController | null>(null);
   const [location, setLocation] = useState<Location | null>(null);
   const [areaLabel, setAreaLabel] = useState('Nearby');
   const [areaQuery, setAreaQuery] = useState('');
@@ -110,7 +116,7 @@ export default function EastEatsApp() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
     const signInNotice = authNotice(window.location.search);
     if (signInNotice) setNotice(signInNotice);
-    return () => { mounted.current = false; };
+    return () => { mounted.current = false; favoriteRequest.current?.abort(); };
   }, [boot]);
   useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(`east-eats:taste:${session.user.id}`, JSON.stringify(favorites)); } catch { /* A private browsing storage limit must not block the questionnaire. */ } } }, [favorites, draftReady, session?.user]);
 
@@ -133,15 +139,77 @@ export default function EastEatsApp() {
 
   const searchFavorites = useCallback(async () => {
     if (!searchName.trim()) return;
-    setBusy('search'); setError('');
+    favoriteRequest.current?.abort();
+    const controller = new AbortController();
+    favoriteRequest.current = controller;
+    const search: FavoriteSearch = { id: ++favoriteSearchId.current, query: searchName.trim(), city: searchCity.trim(), startedAt: Date.now(), phase: 'searching' };
+    setFavoriteSearch(search); setFavoriteJob(null); setSearchResults(null);
+    setBusy('search'); setError(''); setNotice('');
     try {
-      const data = await request<{ items: Restaurant[]; job: RefreshJob | null }>('/api/places/search', { query: searchName.trim(), city: searchCity.trim() });
+      const data = await request<{ items: Restaurant[]; job: RefreshJob | null }>('/api/places/search', { query: search.query, city: search.city }, undefined, controller.signal);
+      if (controller.signal.aborted || search.id !== favoriteSearchId.current) return;
       setSearchResults(data.items);
-      if (data.job && ['queued', 'running'].includes(data.job.status)) setJob({ job: data.job, purpose: 'favorites' });
-      else if (data.job?.status === 'budget_limited') setNotice('Live search is paused. Try a restaurant already in the list, or retry later.');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Restaurant search did not finish.'); } finally { setBusy(''); }
+      if (data.job && ['queued', 'running'].includes(data.job.status)) setFavoriteJob({ job: data.job, search });
+      else if (data.job && data.job.status !== 'succeeded') {
+        setFavoriteSearch({ ...search, phase: 'stopped' });
+        setNotice(data.job.status === 'budget_limited' ? 'Live search is paused. Try a restaurant already in the list, or retry later.' : 'The live search could not finish. Please try again.');
+      } else setFavoriteSearch({ ...search, phase: 'complete' });
+    } catch (e) {
+      if (!controller.signal.aborted && search.id === favoriteSearchId.current) {
+        setFavoriteSearch({ ...search, phase: 'stopped' });
+        setError(e instanceof Error ? e.message : 'Restaurant search did not finish.');
+      }
+    } finally { if (search.id === favoriteSearchId.current) setBusy(''); }
   }, [searchName, searchCity]);
-  refreshRef.current = job?.purpose === 'favorites' ? searchFavorites : () => discover(true);
+  // Poll the submitted query, never the current text-field drafts. Each new
+  // submitted search invalidates every response and timer from its predecessor.
+  useEffect(() => {
+    if (!favoriteJob || stage !== 'questionnaire') return;
+    const current = favoriteJob;
+    const controller = new AbortController();
+    let cancelled = false, polls = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const isCurrent = () => !cancelled && current.search.id === favoriteSearchId.current;
+    const stop = (message: string) => {
+      if (!isCurrent()) return;
+      setFavoriteSearch({ ...current.search, phase: 'stopped' }); setFavoriteJob(null); setNotice(message);
+    };
+    const timeoutMessage = 'This search is taking longer than expected. Your results will be saved. Try the same search again shortly.';
+    const deadline = setTimeout(() => { stop(timeoutMessage); controller.abort(); }, Math.max(0, 180_000 - (Date.now() - current.search.startedAt)));
+    const updateResults = async (finished: boolean): Promise<'continue' | 'moved' | 'complete'> => {
+      const data = await request<{ items: Restaurant[]; job: RefreshJob | null }>('/api/places/search', { query: current.search.query, city: current.search.city }, undefined, controller.signal);
+      if (!isCurrent()) return 'complete';
+      setSearchResults(data.items);
+      if (data.job && ['queued', 'running'].includes(data.job.status)) {
+        if (data.job.id !== current.job.id) { setFavoriteJob({ search: current.search, job: data.job }); return 'moved'; }
+        return 'continue';
+      }
+      if (finished) {
+        if (data.job && data.job.status !== 'succeeded') { stop('The live search could not finish. Please try again.'); return 'complete'; }
+        setFavoriteSearch({ ...current.search, phase: 'complete' }); setFavoriteJob(null); return 'complete';
+      }
+      return 'continue';
+    };
+    const poll = async () => {
+      if (!isCurrent()) return;
+      if (Date.now() - current.search.startedAt >= 180_000) { stop(timeoutMessage); return; }
+      try {
+        const data = await request<{ job: RefreshJob }>(`/api/jobs/${encodeURIComponent(current.job.id)}`, undefined, undefined, controller.signal);
+        if (!isCurrent()) return;
+        if (data.job.status === 'succeeded') { if (await updateResults(true) !== 'continue') return; }
+        else if (!['queued', 'running'].includes(data.job.status)) {
+          stop(data.job.status === 'budget_limited' ? 'Live search is paused. Your existing results are still available.' : 'The live search could not finish. Please try again.'); return;
+        } else {
+          polls += 1;
+          if (polls % 3 === 0 && await updateResults(false) !== 'continue') return;
+        }
+        if (isCurrent()) timer = setTimeout(poll, 3000);
+      } catch { if (isCurrent() && !controller.signal.aborted) stop('We could not check the live search. Please try again.'); }
+    };
+    timer = setTimeout(poll, 3000);
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); clearTimeout(deadline); };
+  }, [favoriteJob?.job.id, favoriteJob?.search.id, stage]);
+  refreshRef.current = () => discover(true);
   useEffect(() => {
     if (!job) return;
     let cancelled = false, polls = 0;
@@ -192,6 +260,7 @@ export default function EastEatsApp() {
     try { await request(`/api/saved/${encodeURIComponent(restaurant.id)}`, undefined, isSaved ? 'DELETE' : 'PUT'); setSavedPlaces(places => isSaved ? places.filter(place => place.id !== restaurant.id) : places.some(place => place.id === restaurant.id) ? places : [...places, restaurant]); setNotice(isSaved ? `${restaurant.name} removed from Saved.` : `${restaurant.name} saved.`); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save this place.'); } finally { savingRef.current.delete(restaurant.id); setSavingIds([...savingRef.current]); }
   }
   async function logout() {
+    favoriteSearchId.current += 1; favoriteRequest.current?.abort(); setFavoriteJob(null); setFavoriteSearch(null); setSearchResults(null);
     setBusy('logout'); setError('');
     try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setDraftReady(false); setResults(null); setSavedPlaces([]); setLocation(null); setJob(null); setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
   }
@@ -209,8 +278,8 @@ export default function EastEatsApp() {
 
       {stage === 'questionnaire' && <section><p className="eyebrow">Your taste, in good company</p><h1>Where do you<br />love eating?</h1><p className="lede">Add up to five favorites, anywhere. Three gives us a good start. One is enough.</p>
         <form className="search-form" onSubmit={event => { event.preventDefault(); void searchFavorites(); }}><label>Restaurant name<input value={searchName} onChange={event => setSearchName(event.target.value)} maxLength={150} required placeholder="A favorite noodle shop…" /></label><label>City <span className="muted">(optional)</span><input value={searchCity} onChange={event => setSearchCity(event.target.value)} maxLength={100} placeholder="Any city" /></label><button className="button" disabled={busy === 'search'}>{busy === 'search' ? 'Searching…' : 'Find restaurant'}</button></form>
-        {job?.purpose === 'favorites' && <p role="status" className="small">Looking for more restaurant details. You can keep editing your answers.</p>}
-        {searchResults !== null && <div className="search-results" aria-live="polite"><h2 className="small-heading">Search results</h2>{searchResults.length === 0 ? <p>No results yet. Try adding a city or check back after the search finishes.</p> : searchResults.map(restaurant => <div className="search-result" key={restaurant.id}><div><strong>{restaurant.name}</strong><span className="small">{restaurant.city} · {restaurant.cuisines.join(', ')}</span></div><button className="button" disabled={favorites.length >= 5 || favorites.some(favorite => favorite.restaurantId === restaurant.id)} onClick={() => setFavorites(current => [...current, favoriteFromRestaurant(restaurant)])}>{favorites.some(favorite => favorite.restaurantId === restaurant.id) ? 'Added' : 'Add favorite'}</button></div>)}</div>}
+        {favoriteSearch?.phase === 'searching' && <p role="status" className="small">Searching Google Maps… <span>We’re checking {favoriteSearch.query}{favoriteSearch.city ? ` in ${favoriteSearch.city}` : ''}. Results appear here as they arrive.</span></p>}
+        {searchResults !== null && <div className="search-results" aria-live="polite"><h2 className="small-heading">Search results{favoriteSearch ? ` for ${favoriteSearch.query}` : ''}</h2>{searchResults.length === 0 ? favoriteSearch?.phase === 'complete' ? <p>No places matched this search. Try adding a city or checking the restaurant name.</p> : favoriteSearch?.phase === 'stopped' ? <p>The search has not finished. Please try again.</p> : null : searchResults.map(restaurant => <div className="search-result" key={restaurant.id}><div><strong>{restaurant.name}</strong><span className="small">{restaurant.city} · {restaurant.cuisines.join(', ')}</span></div><button className="button" disabled={favorites.length >= 5 || favorites.some(favorite => favorite.restaurantId === restaurant.id)} onClick={() => setFavorites(current => [...current, favoriteFromRestaurant(restaurant)])}>{favorites.some(favorite => favorite.restaurantId === restaurant.id) ? 'Added' : 'Add favorite'}</button></div>)}</div>}
         <form onSubmit={submitTaste}><div className="favorites-list">{favorites.map((favorite, index) => <fieldset className="favorite-card" key={favorite.restaurantId}><legend>{favorite.name}</legend><div className="favorite-top"><p className="small">{favorite.city}</p><button type="button" className="text-button" onClick={() => setFavorites(current => current.filter(value => value.restaurantId !== favorite.restaurantId))} aria-label={`Remove ${favorite.name}`}>Remove</button></div><p>What keeps you coming back?</p><div className="reason-options">{REASONS.map(reason => <button className="chip" type="button" key={reason} aria-pressed={favorite.reasons.includes(reason)} onClick={() => setFavorites(current => current.map((value, i) => i === index ? toggleReason(value, reason) : value))}>{reason}</button>)}</div><label htmlFor={`notes-${index}`}>Tell us more <span className="muted">(optional)</span></label><textarea id={`notes-${index}`} value={favorite.notes} maxLength={1500} onChange={event => setFavorites(current => current.map((value, i) => i === index ? { ...value, notes: event.target.value } : value))} placeholder="The noodles have a great chew, and I don’t mind a rushed ordering experience." rows={3} /></fieldset>)}</div><div className="inline-actions"><button className="button primary" disabled={busy === 'taste' || !validFavorites(favorites)}>{busy === 'taste' ? 'Getting to know your tastes…' : 'Find my next meal'}</button>{profile && <button className="button" type="button" onClick={() => setStage(location ? 'explore' : 'location')}>Back to exploring</button>}</div>{favorites.length > 0 && !validFavorites(favorites) && <p className="small">Choose a reason or write a note for each favorite to continue.</p>}</form></section>}
 
       {stage === 'interpretation' && profile && <section><p className="eyebrow">Your taste profile</p><h1>{personalized ? 'Here’s what we’re hearing.' : 'Your answers are saved.'}</h1><div className="field-note interpretation"><p>{personalized ? profile.interpretation : 'We could not personalize your recommendations yet. You can retry or explore with the default ranking.'}</p></div><form onSubmit={submitTaste}><label htmlFor="correction">Anything we missed?</label><textarea id="correction" rows={3} maxLength={1500} value={correction} onChange={event => setCorrection(event.target.value)} placeholder="Actually, I prefer mild food and I’d travel farther for great dumplings." /><div className="inline-actions"><button className="button" disabled={busy === 'taste'}>{busy === 'taste' ? 'Updating…' : personalized ? 'Update my tastes' : 'Retry personalization'}</button><button className="button primary" type="button" onClick={() => setStage(location ? 'explore' : 'location')}>Let’s find somewhere</button></div></form><button className="text-button" onClick={() => setStage('questionnaire')}>Edit my favorites</button></section>}

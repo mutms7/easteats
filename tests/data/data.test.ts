@@ -89,6 +89,54 @@ function dependencies(override:Partial<WorkerDependencies>={},responses:Record<s
 }
 
 describe('durable worker',()=>{
+  it('starts favorite lookup with five places and zero reviews, retaining the same spending cap',async()=>{
+    const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'favorite-search',run_id:null,input:{query:'Pho 99',city:'Coquitlam'}}]});
+    deps.apify.start=vi.fn(async()=>({id:'favorite-run',actId:'actor',status:'READY',defaultDatasetId:'favorite-dataset'}));
+    await processRefreshJobs(deps);
+    expect(deps.apify.start).toHaveBeenCalledWith({query:'Pho 99',city:'Coquitlam',maxPlaces:5,maxReviews:0},1,undefined,undefined);
+    expect(calls.find(c=>c.name==='reserve_usage')?.args?.p_reserved_usd).toBe(1);
+    expect(deps.extract).not.toHaveBeenCalled();
+  });
+  it('ingests all five favorite matches and completes immediately without Claude',async()=>{
+    const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'favorite-search'}]});
+    deps.apify.dataset=vi.fn(async(_id,offset)=>offset===0?Array.from({length:5},(_,i)=>({...place,placeId:`favorite-${i}`,title:`Pho 99 ${i}`})):[]);
+    deps.extract=vi.fn(async()=>{throw new Error('Favorite search must not invoke Claude');});
+    expect(await processRefreshJobs(deps)).toEqual({processed:1,failed:0});
+    const ingested=calls.filter(c=>c.name==='ingest_place');
+    expect(ingested).toHaveLength(5);
+    expect(ingested.every(c=>Array.isArray(c.args?.p_reviews)&&c.args.p_reviews.length===0)).toBe(true);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded'&&c.args?.p_offset===5)).toBe(true);
+    expect(deps.apify.dataset).toHaveBeenNthCalledWith(1,'dataset1',0,5);
+    expect(deps.apify.dataset).toHaveBeenNthCalledWith(2,'dataset1',5,1);
+    expect(deps.extract).not.toHaveBeenCalled();
+    expect(calls.filter(c=>c.name==='reserve_usage'&&c.args?.p_provider==='anthropic')).toHaveLength(0);
+  });
+  it('publishes partial favorite matches while the source is running without releasing its budget reservation',async()=>{
+    const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'favorite-search',cursor_offset:2}]});
+    deps.apify.getRun=vi.fn(async()=>({id:'run1',actId:'actor',status:'RUNNING',defaultDatasetId:'dataset1',usageTotalUsd:.01}));
+    await processRefreshJobs(deps);
+    expect(deps.apify.dataset).toHaveBeenCalledWith('dataset1',2,5);
+    expect(calls.some(c=>c.name==='ingest_place')).toBe(true);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='running'&&c.args?.p_offset===3)).toBe(true);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded')).toBe(false);
+    expect(calls.some(c=>c.name==='settle_usage')).toBe(false);
+    expect(deps.extract).not.toHaveBeenCalled();
+  });
+  it('keeps an empty partial favorite dataset running until the source finishes',async()=>{
+    const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,kind:'favorite-search'}]});
+    deps.apify.getRun=vi.fn(async()=>({id:'run1',actId:'actor',status:'RUNNING',defaultDatasetId:'dataset1'}));
+    deps.apify.dataset=vi.fn(async()=>[]);
+    await processRefreshJobs(deps);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded')).toBe(false);
+    expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='running')).toBe(true);
+  });
+  it('does not change discovery processing before its source run completes',async()=>{
+    const {deps}=dependencies();
+    deps.apify.getRun=vi.fn(async()=>({id:'run1',actId:'actor',status:'RUNNING',defaultDatasetId:'dataset1'}));
+    await processRefreshJobs(deps);
+    expect(deps.apify.dataset).not.toHaveBeenCalled();
+    expect(deps.extract).not.toHaveBeenCalled();
+  });
   it('holds an ambiguous Apify launch rather than launching it twice',async()=>{
     const {deps,calls}=dependencies({}, {claim_refresh_jobs:[{...queueJob,status:'queued',run_id:null}]});
     deps.apify.start=vi.fn(async()=>{throw new Error('timeout');});

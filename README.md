@@ -39,7 +39,7 @@ In Supabase URL Configuration set Site URL to `http://localhost:3000` and allow 
 
 ### Database and workers
 
-The five migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
+The six migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
 
 `refresh-worker` and `apify-webhook` are deployed and configured. Their credentials are encrypted in Supabase Vault, accessible only through service-only functions. The fourth migration installs a one-minute schedule, which dispatches work only while active jobs exist. The worker returns an authenticated HTTP 202 before processing in the background. Built-in Supabase service credentials provide its bootstrap connection.
 
@@ -51,11 +51,13 @@ npm run worker:once
 npm run worker
 ```
 
-The website can enqueue jobs independently. The hosted schedule keeps processing without the local runner. No schedule contains a plaintext credential. If a launch's outcome is unknown, the reservation stays held and the job requires reconciliation rather than an automatic second paid launch. Each invocation enriches one restaurant, so a full result set can take several minutes. Existing and partial results stay usable.
+The website can enqueue jobs independently. The hosted schedule keeps processing without the local runner. No schedule contains a plaintext credential. If a launch's outcome is unknown, the reservation stays held and the job requires reconciliation rather than an automatic second paid launch. Discovery enrichment handles one restaurant per invocation; favorite lookups publish up to five businesses at a time without waiting for review analysis. Existing and partial results stay usable.
 
 ## Behavior
 
 Google sign-in precedes the questionnaire. Add one to five favorite restaurants anywhere, with reasons. Claude compiles hidden, validated taste weights; the app shows an editable interpretation. Location is requested when choosing nearby recommendations. Exact user coordinates aren't stored; refresh areas are rounded to two decimal places.
+
+Every submitted favorite search checks Apify's Google Maps scraper through a durable job, while immediately returning cached matches. The same normalized query and city share a run for 24 hours. Interactive lookups take priority, request five businesses with zero reviews, publish partial results, and skip Claude review analysis. The UI shows “Searching Google Maps…” until the lookup finishes, then updates automatically. Accents and spaces match consistently, including `Pho99`, `Pho 99`, and `Phở 99`. Search failures and the three-minute waiting limit are shown as unfinished searches, rather than empty results.
 
 Restaurant order is calculated in code from food evidence, taste match, value, distance, service, and atmosphere. Google stars are displayed separately and never create a low-rating bonus. Cleanliness review concerns remain separate and visible. Missing features stay neutral with reduced confidence. Off-topic scraper results without East Asian cuisine evidence aren't included in discovery.
 
@@ -85,6 +87,7 @@ The automated browser journey uses clearly labeled fictional fixtures. It verifi
 - Rollback-only database checks passed profile isolation, ownership protection, and rejection of direct authenticated access to spending RPCs.
 - Authenticated API checks passed session verification, real Claude personalization, cached favorite search, nearby ranking, idempotent saved places, and MapTiler geocoding. The isolated test account was removed afterward.
 - The hosted worker returns 401 without authentication and 202 with its shared secret. Scheduled processing has successfully extracted and stored full review evidence from the existing live Apify run.
+- A real authenticated search for `Pho99` in `Coquitlam` launched Apify run `YcsypKL1B3JZEdoWp`, succeeded with five source businesses and zero reviews, and returned three matching Pho 99 listings through the app API. Its verified source charge was $0.0252. The isolated acceptance account was removed afterward. `scripts/verify-favorite-live.ts` is a guarded manual check, excluded from automated paid work.
 
 Google OAuth is enabled. The local sign-in route was verified to redirect through Supabase to `accounts.google.com` with the correct Supabase callback. A person's first Google consent and completed return session still need a manual check. Full launch-city coverage, installed-phone behavior, and website deployment require further live verification. No hosted frontend URL is claimed yet.
 

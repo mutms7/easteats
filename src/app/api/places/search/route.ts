@@ -8,6 +8,9 @@ export const POST=endpoint(async request=>{
  const s=await requireSession();const input=schema.parse(await readJson(request));
  if(s.demo)return json({items:demoRestaurants.filter(r=>`${r.name} ${r.cuisines.join(' ')} ${r.features?.dishes.join(' ')}`.toLowerCase().includes(input.query.toLowerCase())),job:null,dataMode:'demo'});
  const items=await cachedSearch(s.client!,input.query,input.city);
- const job=items.length?null:await queueRefresh(s.client!,'favorite-search',input);
+ // A submitted search checks Google Maps even if some matching places are
+ // cached. The database shares the same query's run for 24 hours.
+ const liveInput={query:input.query.replace(/\s+/g,' ').toLowerCase(),city:input.city.replace(/\s+/g,' ').toLowerCase()};
+ const job=await queueRefresh(s.client!,'favorite-search',liveInput);
  return json({items,job,dataMode:'live'});
 },true);

@@ -9,12 +9,8 @@ export async function cachedNearby(client:SupabaseClient,location:Location,radiu
  return (data||[]).map((r:unknown)=>restaurantSchema.parse(r));
 }
 export async function cachedSearch(client:SupabaseClient,query:string,city:string):Promise<Restaurant[]> {
- // Escape LIKE metacharacters. PostgREST receives values through query parameters.
- const escaped=query.replace(/[\\%_]/g,'\\$&');
- let req=client.from('restaurants').select('record').ilike('record->>name',`%${escaped}%`).limit(15);
- if(city) req=req.ilike('record->>city',`%${city.replace(/[\\%_]/g,'\\$&')}%`);
- const {data,error}=await req;if(error)throw error;
- return (data||[]).map(r=>restaurantSchema.parse(r.record));
+ const {data,error}=await client.rpc('search_restaurants',{p_query:query,p_city:city});if(error)throw error;
+ return (data||[]).map((record:unknown)=>restaurantSchema.parse(record));
 }
 export async function queueRefresh(client:SupabaseClient,kind:RefreshJob['kind'],input:Record<string,unknown>):Promise<RefreshJob|null>{
  const key=createHash('sha256').update(JSON.stringify({kind,...input})).digest('hex');
