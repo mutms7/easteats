@@ -279,7 +279,7 @@ export default function EastEatsApp() {
       if (!isCurrent()) return;
       setDiscoveryJob(null); setDiscoveryPhase('stopped'); setNotice(message);
     };
-    const timeoutMs = current.phase === 'places' ? 180_000 : 300_000;
+    const timeoutMs = current.phase === 'places' ? 600_000 : 1_200_000;
     const timeoutMessage = current.phase === 'places' ? 'This area search is taking longer than expected. You can keep browsing any results already found.' : 'Food details are still being checked. You can keep browsing the places we found.';
     const deadline = setTimeout(() => { stop(timeoutMessage); controller.abort(); }, Math.max(0, timeoutMs - (Date.now() - current.intent.startedAt)));
     const poll = async () => {
