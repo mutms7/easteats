@@ -17,8 +17,9 @@ export function safeHttps(raw: string | null | undefined): string | undefined {
   try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password ? url.toString() : undefined; } catch { return undefined; }
 }
 export function activeJob(status: string | undefined): boolean { return status === 'queued' || status === 'running'; }
-export function mergePlaces<T extends { restaurant: { id: string } }>(current: T[], incoming: T[], complete: boolean): T[] {
+export function mergePlaces<T extends { restaurant: { id: string } }>(current: T[], incoming: T[], complete: boolean, preferIncomingOrder = false): T[] {
   const fresh = new Map(incoming.map(item => [item.restaurant.id, item]));
+  if (preferIncomingOrder) return [...incoming, ...(complete ? [] : current.filter(item => !fresh.has(item.restaurant.id)))];
   const known = new Set(current.map(item => item.restaurant.id));
   return [...current.filter(item => !complete || fresh.has(item.restaurant.id)).map(item => fresh.get(item.restaurant.id) ?? item), ...incoming.filter(item => !known.has(item.restaurant.id))];
 }

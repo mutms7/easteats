@@ -163,9 +163,10 @@ export default function EastEatsApp() {
   const discover = useCallback(async (intent: DiscoveryIntent, offerUpdate = false, signal?: AbortSignal) => {
     const data = await request<DiscoveryPayload>('/api/discover', intent.input, undefined, signal);
     if (signal?.aborted || activeDiscovery.current?.id !== intent.id) return;
-    // Every newly found place reaches the list and map immediately. Preserve
-    // the existing order while applying fresh metadata, and offer only reorders.
-    const next = offerUpdate ? mergeDiscoveryResults(appliedResults.current, data) : { applied: data, pending: null };
+    // Every new place reaches both views. Browse stays stable; explicit food,
+    // cuisine, and text searches immediately follow fresh relevance tiers.
+    const preferRelevance = Boolean(intent.input.query.trim() || intent.input.foodType || intent.input.cuisine);
+    const next = offerUpdate ? mergeDiscoveryResults(appliedResults.current, data, preferRelevance) : { applied: data, pending: null };
     appliedResults.current = next.applied; setResults(next.applied); setPendingResults(next.pending);
     const businessPending = data.job && ['queued', 'running'].includes(data.job.status);
     const reviewPending = data.enrichmentJob && ['queued', 'running'].includes(data.enrichmentJob.status);

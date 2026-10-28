@@ -43,11 +43,15 @@ export function fitLabel(item: RankedRestaurant): string {
   return item.score >= 65 ? 'Strong fit' : 'Worth exploring';
 }
 
-/** Append new places immediately; only an existing-place reorder needs consent. */
-export function mergeDiscoveryResults(current: DiscoverResponse | null, incoming: DiscoverResponse): { applied: DiscoverResponse; pending: DiscoverResponse | null } {
+/** Browse stays stable; an explicit search immediately follows source relevance. */
+export function mergeDiscoveryResults(current: DiscoverResponse | null, incoming: DiscoverResponse, preferIncomingOrder = false): { applied: DiscoverResponse; pending: DiscoverResponse | null } {
   if (!current?.items.length) return { applied: incoming, pending: null };
   const currentIds = new Set(current.items.map(item => item.restaurant.id));
   const incomingById = new Map(incoming.items.map(item => [item.restaurant.id, item]));
+  if (preferIncomingOrder) {
+    const missing = incoming.job?.status === 'succeeded' ? [] : current.items.filter(item => !incomingById.has(item.restaurant.id));
+    return { applied: { ...incoming, items: [...incoming.items, ...missing] }, pending: null };
+  }
   const existingOrder = current.items.filter(item => incomingById.has(item.restaurant.id)).map(item => item.restaurant.id);
   const rankedExistingOrder = incoming.items.filter(item => currentIds.has(item.restaurant.id)).map(item => item.restaurant.id);
   const orderChanged = existingOrder.some((id, index) => id !== rankedExistingOrder[index]);

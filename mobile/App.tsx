@@ -134,7 +134,8 @@ export default function App() {
           // creates a new source run, which protects the scraping budget.
           const data = await api<DiscoverResponse>('/api/discover', intent.input, undefined, controller.signal);
           if (controller.signal.aborted) return;
-          setItems(current => mergePlaces(current, data.items, data.job?.status === 'succeeded'));
+          const preferRelevance = Boolean(intent.input.query.trim() || intent.input.foodType || intent.input.cuisine);
+          setItems(current => mergePlaces(current, data.items, data.job?.status === 'succeeded', preferRelevance));
           if (data.warning) setMessage(data.warning);
           const placesPending = activeJob(data.job?.status), reviewsPending = activeJob(data.enrichmentJob?.status);
           if (!placesPending && !reviewsPending) {

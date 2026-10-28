@@ -136,3 +136,31 @@ test('GPS is requested only by action and overrides home for this visit without 
   await expect.poll(() => state.discoveries.length).toBe(3);
   expect(state.discoveries.at(-1)).toMatchObject({ lat: home.lat, lng: home.lng });
 });
+
+test('a late noodle specialist moves ahead in a filtered search while every matching map pin remains', async ({ page }) => {
+  await fixtures(page, home);
+  const broad = { ...ranked, restaurant: { ...restaurant, id: 'fixture-incidental', name: 'Fixture Incidental Review' } };
+  const specialist = { ...ranked, restaurant: { ...restaurant, id: 'fixture-specialist', name: 'Fixture Noodle Specialist', lat: 43.525 } };
+  const job = { id: 'fixture-relevance-job', kind: 'discovery', createdAt: '2026-10-28T00:00:00Z' };
+  let updates = 0, polls = 0;
+  const searchIds: string[] = [];
+  await page.route('**/api/discover', route => {
+    const input = route.request().postDataJSON() as DiscoverInput;
+    if (!input.foodType) return route.fulfill({ json: { items: [broad], job: null, profileVersion: 1, dataMode: 'live', refreshing: false } });
+    updates += 1; searchIds.push(input.searchId!);
+    return route.fulfill({ json: { items: updates === 1 ? [broad] : [specialist, broad], job: { ...job, status: updates === 1 ? 'running' : 'succeeded' }, profileVersion: 1, dataMode: 'live', refreshing: updates === 1 } });
+  });
+  await page.route(`**/api/jobs/${job.id}`, route => { polls += 1; return route.fulfill({ json: { job: { ...job, status: polls >= 3 ? 'succeeded' : 'running' } } }); });
+  await page.goto('/'); await expect(page.locator('.restaurant-title').first()).toHaveText('Fixture Incidental Review');
+  await page.clock.install();
+  await page.getByRole('combobox', { name: 'Food type', exact: true }).selectOption('noodles');
+  await expect.poll(() => updates).toBe(1);
+  for (let count = 1; count <= 3; count++) { await page.clock.fastForward(3100); await expect.poll(() => polls).toBe(count); }
+  await expect(page.locator('.restaurant-title').first()).toHaveText('Fixture Noodle Specialist');
+  await expect(page.locator('.restaurant-card')).toHaveCount(2);
+  await expect(page.locator('.map-locations button')).toHaveCount(2);
+  await expect(page.locator('.map-locations button').filter({ hasText: 'Fixture Noodle Specialist' })).toHaveCount(1);
+  await expect(page.locator('.map-locations button').filter({ hasText: 'Fixture Incidental Review' })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Fresh details are ready. Update results' })).toHaveCount(0);
+  expect(new Set(searchIds).size).toBe(1);
+});

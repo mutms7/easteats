@@ -26,6 +26,14 @@ describe('progressive discovery', () => {
     assert.deepEqual(mergePlaces([place('old')], [place('new')], false).map(item => item.restaurant.id), ['old', 'new']);
     assert.deepEqual(mergePlaces([place('old')], [place('new')], true).map(item => item.restaurant.id), ['new']);
   });
+  it('honors explicit-search relevance for a late specialist while retaining partial cached rows below it', () => {
+    const current = [place('broad'), place('old-cache')];
+    const incoming = [place('specialist'), place('broad', 'fresh')];
+    const partial = mergePlaces(current, incoming, false, true);
+    assert.deepEqual(partial.map(item => item.restaurant.id), ['specialist', 'broad', 'old-cache']);
+    assert.equal(partial[1].title, 'fresh');
+    assert.deepEqual(mergePlaces(partial, incoming, true, true).map(item => item.restaurant.id), ['specialist', 'broad']);
+  });
   it('does not treat completed or failed work as pending', () => {
     assert.equal(activeJob('queued'), true); assert.equal(activeJob('running'), true);
     for (const status of ['succeeded', 'failed', 'budget_limited', 'uncertain', undefined]) assert.equal(activeJob(status), false);

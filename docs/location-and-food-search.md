@@ -20,7 +20,7 @@ New Apify records preserve original listing categories and add canonical food ty
 
 Every result, including a newly scraped one, must satisfy the recognized query and selected facets. `noodles` can match ramen, pho, udon, and other supported noodle aliases. `ramen` needs ramen evidence and won't match pho merely because both are noodles. `Korean noodles` requires both. `beef noodles` checks the modifier against listing/dish/review text. `Pho99` preserves the numeric name constraint. Matching handles normalization, plurals, bounded multilingual aliases, and unambiguous single-edit food-word typos.
 
-An explicit food search ranks matches identified in a name or listing category ahead of matches supported only by review mentions. Personal taste ordering remains within those relevance tiers. Browse ordering stays personalized. This makes noodle listings easier to find without claiming that every restaurant mentioning noodles specializes in them.
+An explicit food search ranks matches identified in a name or listing category ahead of matches supported only by review mentions. Personal taste ordering remains within those relevance tiers. Browse ordering stays personalized. Explicit text, food, and cuisine searches immediately follow incoming relevance order as new places arrive, while partial cached rows remain visible below. All matching map pins remain available. This makes noodle listings easier to find without claiming that every restaurant mentioning noodles specializes in them.
 
 Each submitted search still creates one fresh Apify search identity. Polling reuses it. The provider query includes the typed search, cuisine, and food filter, with existing limits on query length, source count, spending, and refresh frequency. Selecting an address to save or typing autocomplete text doesn't launch an actor. Unclassified places stay out of strict dish results until supporting detail arrives; the interface explains when review updates may add matches.
 
@@ -38,7 +38,7 @@ Food/value/service/atmosphere signals come from the existing review sentiment ag
 
 ## Checks and limits
 
-The final local referee passed 243 unit/integration tests, TypeScript, a production build, and 35 browser tests. Both native platform bundles and the native type/source checks also passed.
+The final local referee passed 244 unit/integration tests, TypeScript, a production build, and 36 browser tests. Both native platform bundles and the native type/source checks also passed.
 
 Tests cover category parsing, food/cuisine separation, specific dishes, multilingual names, typo and mixed-query matching, irrelevant sourced hits, relevance ordering, read-only/unknown scores, saved-home privacy, current-location overrides, reloads, keyboard access, and phone layout. A transactional database check proves owner-only reads/updates/deletes and cascading deletion, then rolls back all synthetic records.
 

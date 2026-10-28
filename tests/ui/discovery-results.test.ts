@@ -34,4 +34,14 @@ describe('progressive discovery results', () => {
     expect(mergeDiscoveryResults(current, partial).applied.items.map(place => place.restaurant.id)).toEqual(['removed', 'still-open', 'new']);
     expect(mergeDiscoveryResults(current, complete).applied.items.map(place => place.restaurant.id)).toEqual(['still-open', 'new']);
   });
+  it('promotes a late specialist immediately for an explicit search and puts partial cache misses last', () => {
+    const current = response([item('broad-review'), item('cached-missing')]);
+    const incoming = response([item('noodle-specialist'), item('broad-review', 'Fresh review')]);
+    const next = mergeDiscoveryResults(current, incoming, true);
+    expect(next.applied.items.map(place => place.restaurant.id)).toEqual(['noodle-specialist', 'broad-review', 'cached-missing']);
+    expect(next.applied.items[1].explanation).toBe('Fresh review');
+    expect(next.pending).toBeNull();
+    const complete = { ...incoming, job: { id: 'fixture', kind: 'discovery' as const, status: 'succeeded' as const, createdAt: '2026-10-28T00:00:00Z' } };
+    expect(mergeDiscoveryResults(next.applied, complete, true).applied.items.map(place => place.restaurant.id)).toEqual(['noodle-specialist', 'broad-review']);
+  });
 });
