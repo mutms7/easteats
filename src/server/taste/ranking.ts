@@ -1,6 +1,7 @@
 import { locationSchema, tasteProfileSchema, type Location, type RankedRestaurant, type Restaurant, type TasteProfile } from '../../lib/contracts.ts';
 import { normalizeWeights } from './profile.ts';
 import { TasteError } from './claude.ts';
+import { hasReviewConfidence, restaurantReviewSignals, reviewEvidence, type ReviewAspect } from '../../lib/restaurant-insights.ts';
 
 const canonical = (value: string) => value.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const tagMatch = (preference: string, candidate: string) => {
@@ -35,19 +36,68 @@ function tasteMatch(restaurant: Restaurant, profile: TasteProfile): number {
   return parts.length ? parts.reduce((sum, value) => sum + value, 0) / parts.length : .5;
 }
 
-function explanationFor(restaurant: Restaurant, profile: TasteProfile, distance: number): string {
+function excerpt(text: string): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  const points = Array.from(compact);
+  if (points.length <= 150) return compact;
+  const prefix = points.slice(0, 147).join('');
+  const boundary = prefix.lastIndexOf(' ');
+  return `${boundary > 100 ? prefix.slice(0, boundary) : prefix}...`;
+}
+
+/** Display taste signals only when a stated preference has review-backed data. */
+function reviewTasteSignal(restaurant: Restaurant, profile: TasteProfile): number | null {
   const features = restaurant.features;
-  const foodEvidence = features?.evidence.filter(item => item.aspect === 'food') ?? [];
-  const grounded = (tag: string) => foodEvidence.some(item => tagMatch(tag, item.text));
-  const dish = matches(profile.dishes, features?.dishes ?? []).find(grounded);
-  if (dish) return `Review evidence mentions ${dish}, matching dishes you enjoy.`;
-  const flavor = matches(profile.flavors, features?.flavors ?? []).find(grounded);
-  if (flavor) return `Review evidence mentions ${flavor}, matching your flavor preferences.`;
-  if (profile.fusionPreference !== null && profile.fusionPreference > .5 && features?.fusion && features.evidence.some(item => item.aspect === 'fusion')) return 'Review evidence describes fusion dishes, matching your interest in unexpected combinations.';
+  if (!features || !hasReviewConfidence(restaurant)) return null;
+  const food = reviewEvidence(restaurant, 'food');
+  const groundedTags = (tags: string[]) => tags.some(tag => food.some(item => tagMatch(tag, item.text)));
+  const comparable = profile.cuisines.length && groundedTags(features.cuisines)
+    || profile.dishes.length && groundedTags(features.dishes)
+    || profile.flavors.length && groundedTags(features.flavors)
+    || profile.spicePreference !== null && features.spice !== null && food.some(item => /spic|chili|chilli|heat|mild|hot|pepper|fiery/i.test(item.text))
+    || profile.fusionPreference !== null && reviewEvidence(restaurant, 'fusion').length > 0;
+  // Listing categories remain useful for sorting, but aren't review evidence.
+  return comparable ? tasteMatch({ ...restaurant, cuisines: [] }, profile) : null;
+}
+
+function insightsFor(restaurant: Restaurant, profile: TasteProfile, distance: number) {
+  const features = restaurant.features;
+  const signals = restaurantReviewSignals(restaurant, reviewTasteSignal(restaurant, profile));
+  const food = hasReviewConfidence(restaurant) ? reviewEvidence(restaurant, 'food') : [];
+  const reasons: string[] = [];
+  const usedQuotes = new Set<string>();
+  const addReason = (reason: string, quote?: string) => {
+    if (!reasons.includes(reason) && (!quote || !usedQuotes.has(quote))) {
+      reasons.push(reason);
+      if (quote) usedQuotes.add(quote);
+    }
+  };
+  const addMatchedTag = (preferences: string[], candidates: string[], kind: 'dishes' | 'flavors' | 'cuisines') => {
+    const tag = matches(preferences, candidates).find(value => food.some(item => tagMatch(value, item.text)));
+    const source = tag ? food.find(item => tagMatch(tag, item.text)) : undefined;
+    const preference = kind === 'dishes' ? 'dishes you enjoy' : kind === 'flavors' ? 'your flavor preferences' : 'your cuisine preferences';
+    if (tag && source) addReason(`Review evidence mentions ${tag}, matching ${preference}: "${excerpt(source.text)}"`, source.text);
+  };
+  addMatchedTag(profile.dishes, features?.dishes ?? [], 'dishes');
+  addMatchedTag(profile.flavors, features?.flavors ?? [], 'flavors');
+  if (reasons.length < 2) addMatchedTag(profile.cuisines, features?.cuisines ?? [], 'cuisines');
+  const fusion = hasReviewConfidence(restaurant) ? reviewEvidence(restaurant, 'fusion')[0] : undefined;
+  if (reasons.length < 2 && profile.fusionPreference !== null && profile.fusionPreference > .5 && features?.fusion && fusion) addReason(`Your interest in fusion overlaps with review evidence: "${excerpt(fusion.text)}"`, fusion.text);
   const cuisine = matches(profile.cuisines, restaurant.cuisines)[0];
-  if (cuisine) return `Listed as ${cuisine}, matching your cuisine preferences.`;
-  if (features?.foodQuality !== null && features?.foodQuality !== undefined && features.foodQuality > .6 && foodEvidence.length && features.confidence >= .25) return 'Food-focused review evidence is positive; check the field notes to see whether it fits your tastes.';
-  return `${distance.toFixed(1)} km away. There is limited evidence for a personal taste match.`;
+  if (reasons.length < 2 && cuisine) addReason(`Listed as ${cuisine}, matching your cuisine preferences.`);
+  const aspects = (['food', 'value', 'service', 'atmosphere'] as const)
+    .filter(aspect => signals[aspect] !== null && profile.weights[aspect] > 0)
+    .sort((a, b) => profile.weights[b] - profile.weights[a]);
+  for (const aspect of aspects) {
+    if (reasons.length >= 3) break;
+    const source = reviewEvidence(restaurant, aspect as ReviewAspect).find(item => !usedQuotes.has(item.text));
+    if (source) addReason(`${aspect[0].toUpperCase()}${aspect.slice(1)} review: "${excerpt(source.text)}"`, source.text);
+  }
+  return {
+    matchReasons: reasons,
+    scoreBreakdown: signals,
+    explanation: reasons[0] ?? `${distance.toFixed(1)} km away. There is limited evidence for a personal taste match.`,
+  };
 }
 
 export function rankRestaurants(restaurants: Restaurant[], profile: TasteProfile, location: Location, radiusKm = 5): RankedRestaurant[] {
@@ -70,6 +120,6 @@ export function rankRestaurants(restaurants: Restaurant[], profile: TasteProfile
       + weights.service * bounded(features?.service)
       + weights.atmosphere * bounded(features?.atmosphere)
     );
-    return [{ restaurant, score: Math.round(score * 100) / 100, distanceKm: Math.round(distance * 1000) / 1000, explanation: explanationFor(restaurant, parsedProfile.data, distance), confidence: bounded(features?.confidence ?? 0) }];
+    return [{ restaurant, score: Math.round(score * 100) / 100, distanceKm: Math.round(distance * 1000) / 1000, ...insightsFor(restaurant, parsedProfile.data, distance), confidence: bounded(features?.confidence ?? 0) }];
   }).sort((a, b) => b.score - a.score || a.distanceKm - b.distanceKm || (a.restaurant.id < b.restaurant.id ? -1 : a.restaurant.id > b.restaurant.id ? 1 : 0));
 }

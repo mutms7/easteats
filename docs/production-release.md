@@ -16,13 +16,13 @@ The Vercel project is `easteats` in `william-chenyins-projects`, connected to `m
 
 Supabase Site URL is `https://easteats.vercel.app`. Allowed callbacks include its `/auth/callback`, localhost callbacks, and `easteats://auth/callback`. Google provider settings are preserved. Native Apple sign-in remains gated until Apple credentials and the Supabase Apple provider are configured.
 
-## A remaining provider restriction
+## Provider restrictions, updated after the location/search changes
 
-The existing MapTiler key accepts localhost but returns HTTP 403, `Key usage restricted`, for requests from `https://easteats.vercel.app`. A native-style request without an Origin also returns 403. The available browser session isn't signed into MapTiler, so this account setting couldn't be changed.
+The website MapTiler key now returns HTTP 200 for both geocoding and map styles with the production origin. A native-style map request without an Origin still returns 403. The available browser session isn't signed into MapTiler, so native key configuration remains an owner action.
 
 In MapTiler Cloud, open Account → API keys and authorize `https://easteats.vercel.app` for the website's key, preserving localhost for development. Configure a separate key suitable for native use according to MapTiler's supported application restrictions. Don't spoof request origins or remove all restrictions as a workaround. If the website key value changes, update `NEXT_PUBLIC_MAPTILER_KEY` in Vercel Production and redeploy; native builds use `EXPO_PUBLIC_MAPTILER_KEY`.
 
-Until this is resolved, production address suggestions and embedded maps won't load. GPS and preset city coordinates can still start restaurant searches through the existing Apify worker. Provider checks don't constitute a real device or production sign-in acceptance test.
+Website address suggestions and tiles are now accepted by the provider. Native tiles still need a supported mobile key. Provider checks don't constitute a real device or production sign-in acceptance test. See [the location/search update](location-and-food-search.md) for saved-home behavior and query matching.
 
 ## Native release status
 

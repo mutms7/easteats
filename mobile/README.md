@@ -16,7 +16,7 @@ cd mobile
 npm ci
 ```
 
-Native contract imports are type-only, but local TypeScript checks and the shared-goal contract test also read the root source tree and its Zod types. Root dependencies are therefore needed for these development checks. They are not bundled into the native runtime. Run the remaining commands from `mobile/`.
+Native contract imports are type-only, but local TypeScript checks and the shared-goal contract test also read the root source tree and its Zod types. Root dependencies are therefore needed for these development checks. Root runtime packages are not bundled. The native app shares the dependency-free taxonomy and review-insight helpers in `src/lib/` through its scoped Metro configuration, so cuisine/food labels and unknown-evidence behavior stay aligned. Run the remaining commands from `mobile/`.
 
 Copy `.env.example` to `.env` and set only the public Supabase URL, publishable key, API origin and MapTiler key. If the web repository already has its public variables in `.env.local`, the following copies only the allowed public fields into a new ignored mobile env file. It refuses to overwrite an existing file:
 

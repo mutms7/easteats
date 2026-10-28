@@ -6,6 +6,7 @@ import {cachedNearby,queueRefresh,searchPlaces} from '@/server/repository';
 import {defaultTasteProfile,rankRestaurants} from '@/server/taste';
 import {isEastAsianRestaurant,isAsianFusionRestaurant} from '@/lib/eligibility';
 import {refreshPlan,enrichmentPlan} from '@/server/refresh-plan';
+import {classifyRestaurant,matchRestaurantSearch,restaurantSearchRelevance} from '@/lib/food-taxonomy';
 export const POST=endpoint(async request=>{
  const s=await requireSession();const input=discoverInputSchema.parse(await readJson(request));let profile=demoState.profile,answers=s.demo?demoState.answers:null;
  if(!s.demo&&!input.searchId)throw new HttpError(400,'Refresh East Eats and submit the search again.','SEARCH_ID_REQUIRED');
@@ -19,12 +20,20 @@ export const POST=endpoint(async request=>{
  }
  const sourced=job?await searchPlaces(s.client!,job.id):[];
  const sourceAuthoritative=sourced.length>0||!!input.searchId&&job?.status==='succeeded';
- const pool=sourceAuthoritative?sourced:restaurants;
- const eligible=pool.filter(r=>isEastAsianRestaurant(r)&&(input.mode!=='fusion'||isAsianFusionRestaurant(r))&&(!input.cuisine||[...r.cuisines,...(r.features?.cuisines||[])].some(c=>c.toLowerCase().includes(input.cuisine.toLowerCase())))&&(!input.maxPrice||r.priceLevel===null||r.priceLevel<=input.maxPrice));
- // Google Maps already applied the live text query. Don't require its exact
- // words in the business name before dish evidence has even been extracted.
- const selected=sourceAuthoritative?eligible:eligible.filter(r=>!input.query||`${r.name} ${r.cuisines.join(' ')} ${r.features?.dishes.join(' ')||''}`.toLowerCase().includes(input.query.toLowerCase()));
- const active=profile||defaultTasteProfile();const items=rankRestaurants(selected,active,input,input.radiusKm);
+ const pool=(sourceAuthoritative?sourced:restaurants).map(restaurant=>{
+  const classification=classifyRestaurant(restaurant);
+  return {...restaurant,cuisines:[...new Set([...restaurant.cuisines,...classification.cuisines])],foodTypes:classification.foodTypes};
+ });
+ const eligible=pool.filter(r=>isEastAsianRestaurant(r)&&(input.mode!=='fusion'||isAsianFusionRestaurant(r))&&(!input.maxPrice||r.priceLevel===null||r.priceLevel<=input.maxPrice));
+ // Maps can return adjacent categories. Every recognized cuisine, food group,
+ // and specific dish still needs listing or review evidence, including live hits.
+ const selected=eligible.filter(r=>matchRestaurantSearch(r,input));
+ if(sourceAuthoritative&&eligible.length>selected.length&&eligible.some(r=>!r.features)&&!warning)warning='Some places are still missing dish details. Review updates may add more matches.';
+ const active=profile||defaultTasteProfile();
+ // Stable sorting preserves personal ranking inside each listing/review tier.
+ // Browsing and cuisine-only searches remain ordered by personal taste.
+ const relevance=new Map(selected.map(restaurant=>[restaurant.id,restaurantSearchRelevance(restaurant,input)]));
+ const items=rankRestaurants(selected,active,input,input.radiusKm).sort((a,b)=>(relevance.get(b.restaurant.id)??0)-(relevance.get(a.restaurant.id)??0));
  if(!s.demo&&job?.status==='succeeded'){
   const candidates=rankRestaurants(eligible,active,input,input.radiusKm).map(item=>item.restaurant);
   const enrichment=enrichmentPlan(candidates);

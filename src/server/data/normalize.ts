@@ -1,4 +1,5 @@
 import type { Restaurant, Review } from '../../lib/contracts.ts';
+import {classifyRestaurant} from '../../lib/food-taxonomy.ts';
 
 const obj = (v: unknown): Record<string, unknown> => v !== null && typeof v === 'object' ? v as Record<string, unknown> : {};
 const text = (v: unknown, max = 500): string => typeof v === 'string' ? v.trim().slice(0, max) : '';
@@ -15,7 +16,9 @@ export function normalizePlace(raw: unknown): { restaurant: Restaurant; reviews:
   const sourceUrl = url(p.url) ?? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${encodeURIComponent(id)}`;
   const cats = Array.isArray(p.categories) ? p.categories.map(c => text(c, 100)).filter(Boolean) : [];
   if (text(p.categoryName)) cats.push(text(p.categoryName, 100));
-  const cuisines = [...new Set(cats.filter(c => /chinese|japanese|korean|taiwan|mongolian|canton|sichuan|szechuan|shangha|hunan|hakka|ramen|sushi|izakaya|dim sum|dumpling|fusion/i.test(c)))];
+  const listingCategories=[...new Set(cats)].slice(0,40);
+  const classification=classifyRestaurant({name,cuisines:[],listingCategories,features:null});
+  const cuisines=[...classification.cuisines,...cats.filter(c=>/^asian (?:fusion )?restaurant$/i.test(c))];
   const price = text(p.price, 50);
   const priceLevel = /^[$£€¥]{1,4}$/.test(price) ? price.length : null;
   const totalScore = num(p.totalScore), count = num(p.reviewsCount);
@@ -32,7 +35,7 @@ export function normalizePlace(raw: unknown): { restaurant: Restaurant; reviews:
     const stars = num(r.stars);
     reviews.push({ id: reviewId, text: body, stars: stars !== null && stars >= 0 && stars <= 5 ? stars : null, publishedAt: date && Number.isFinite(Date.parse(date)) ? new Date(date).toISOString() : null, sourceUrl: url(r.reviewUrl) ?? sourceUrl });
   }
-  return { restaurant: { id, name, address: text(p.address, 500), city: text(p.city, 150), lat, lng, cuisines, priceLevel, googleRating: totalScore !== null && totalScore >= 0 && totalScore <= 5 ? totalScore : null, reviewCount: count === null ? reviews.length : Math.max(0, Math.floor(count)), sourceUrl, imageUrl: url(p.imageUrl) ?? (Array.isArray(p.imageUrls) ? url(p.imageUrls[0]) : null), websiteUrl: url(p.website), hours, isClosed: p.permanentlyClosed === true || p.temporarilyClosed === true, fetchedAt: new Date().toISOString(), features: null }, reviews };
+  return { restaurant: { id, name, address: text(p.address, 500), city: text(p.city, 150), lat, lng, cuisines:[...new Set(cuisines)],foodTypes:classification.foodTypes,listingCategories, priceLevel, googleRating: totalScore !== null && totalScore >= 0 && totalScore <= 5 ? totalScore : null, reviewCount: count === null ? reviews.length : Math.max(0, Math.floor(count)), sourceUrl, imageUrl: url(p.imageUrl) ?? (Array.isArray(p.imageUrls) ? url(p.imageUrls[0]) : null), websiteUrl: url(p.website), hours, isClosed: p.permanentlyClosed === true || p.temporarilyClosed === true, fetchedAt: new Date().toISOString(), features: null }, reviews };
 }
 
 export function needsRefresh(fetchedAt: string | null, ttlMs: number, now = Date.now()): boolean {

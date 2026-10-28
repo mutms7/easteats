@@ -8,6 +8,8 @@ const fixturePlace: Restaurant = {
   reviewCount: 0, sourceUrl: 'https://example.test/pho99', imageUrl: null, websiteUrl: null,
   hours: [], isClosed: false, fetchedAt: '2026-10-25T00:00:00.000Z', features: null,
 };
+const favoriteStatus = (page: Page) => page.getByRole('status').filter({ hasText: /Searching Google Maps|This search is taking longer than expected/ });
+
 const queued = { id: 'ui-fixture-search-job', kind: 'favorite-search', status: 'queued', createdAt: '2026-10-25T00:00:00.000Z' };
 
 async function openQuestionnaire(page: Page) {
@@ -25,7 +27,7 @@ test('cached favorite matches remain selectable during a live Google Maps check'
   await page.route(`**/api/jobs/${queued.id}`, route => route.fulfill({ json: { job: { ...queued, status: 'running' } } }));
   await openQuestionnaire(page);
   await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Searching Google Maps…');
+  await expect(favoriteStatus(page)).toContainText('Searching Google Maps…');
   await expect(page.getByRole('button', { name: 'Add favorite', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Add favorite', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Pho99' })).toBeVisible();
@@ -44,7 +46,7 @@ test('a delayed favorite search stays pending and shows Pho99 without resubmissi
   });
   await openQuestionnaire(page);
   await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Searching Google Maps…');
+  await expect(favoriteStatus(page)).toContainText('Searching Google Maps…');
   await expect(page.getByText(/No places matched|No results yet/)).toHaveCount(0);
   // Typing a draft must not silently change the submitted background search.
   await page.getByRole('textbox', { name: 'Restaurant name' }).fill('Unsubmitted draft');
@@ -54,7 +56,7 @@ test('a delayed favorite search stays pending and shows Pho99 without resubmissi
   }
   await expect(page.getByRole('button', { name: 'Add favorite', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Search results for Pho99' })).toBeVisible();
-  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(favoriteStatus(page)).toHaveCount(0);
   expect(submitted[0].searchId).toMatch(/^[0-9a-f-]{36}$/);
   expect(submitted).toEqual([{ query: 'Pho99', city: 'Coquitlam', searchId: submitted[0].searchId }, { query: 'Pho99', city: 'Coquitlam', searchId: submitted[0].searchId }]);
   await expect(page.getByRole('textbox', { name: 'Restaurant name' })).toHaveValue('Unsubmitted draft');
@@ -72,7 +74,7 @@ test('repeating a favorite search makes a new intent while polling keeps its ori
   await page.route('**/api/jobs/*', route => route.fulfill({ json: { job: { ...queued, status: 'succeeded' } } }));
   await openQuestionnaire(page);
   await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Searching Google Maps…');
+  await expect(favoriteStatus(page)).toContainText('Searching Google Maps…');
   await page.clock.fastForward(3100);
   await expect(page.getByRole('button', { name: 'Add favorite', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
@@ -98,7 +100,7 @@ test('an obsolete job cannot overwrite a newer favorite search', async ({ page }
   });
   await openQuestionnaire(page);
   await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Searching Google Maps…');
+  await expect(favoriteStatus(page)).toContainText('Searching Google Maps…');
   await page.clock.fastForward(3100);
   await expect.poll(() => oldPollStarted).toBe(true);
   await page.getByRole('textbox', { name: 'Restaurant name' }).fill('New Favorite');
@@ -116,9 +118,9 @@ test('a three-minute timeout is reported as unfinished instead of no matches', a
   await page.route(`**/api/jobs/${queued.id}`, route => route.fulfill({ json: { job: { ...queued, status: 'running' } } }));
   await openQuestionnaire(page);
   await page.getByRole('button', { name: 'Find restaurant', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Searching Google Maps…');
+  await expect(favoriteStatus(page)).toContainText('Searching Google Maps…');
   await page.clock.fastForward(180001);
-  await expect(page.getByRole('status')).toContainText('This search is taking longer than expected');
+  await expect(favoriteStatus(page)).toContainText('This search is taking longer than expected');
   await expect(page.getByText(/No places matched|No results yet/)).toHaveCount(0);
   await expect(page.getByText('The search has not finished. Please try again.')).toBeVisible();
 });

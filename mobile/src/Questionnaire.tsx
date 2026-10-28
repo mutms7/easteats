@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import { api } from './api';
@@ -9,7 +9,7 @@ import { GOALS } from './taste-options';
 export { GOALS } from './taste-options';
 const reasons = ['The food itself', 'Regional dishes', 'Great value', 'Spice and bold flavors', 'Atmosphere', 'Friendly service'];
 export function validAnswers(value: TasteInput) { return value.favorites.length >= 1 && value.favorites.length <= 5 && value.favorites.every(favorite => favorite.reasons.length > 0 || favorite.notes.trim().length > 0); }
-export function Questionnaire({ answers, onChange, onSave, busy }: { answers: TasteInput; onChange: (value: TasteInput) => void; onSave: () => void; busy: boolean }) {
+export function Questionnaire({ answers, onChange, onSave, busy, homeEditor }: { answers: TasteInput; onChange: (value: TasteInput) => void; onSave: () => void; busy: boolean; homeEditor?: ReactNode }) {
   const [query, setQuery] = useState(''); const [city, setCity] = useState('');
   const [items, setItems] = useState<Restaurant[]>([]); const [status, setStatus] = useState('');
   const [searching, setSearching] = useState(false); const request = useRef<AbortController | null>(null);
@@ -36,6 +36,7 @@ export function Questionnaire({ answers, onChange, onSave, busy }: { answers: Ta
   function changeFavorite(index: number, patch: Partial<Favorite>) { onChange({ ...answers, favorites: answers.favorites.map((favorite, i) => i === index ? { ...favorite, ...patch } : favorite) }); }
   return <View style={{ gap: 20 }}><Title>Where do you love eating?</Title><T style={s.subtitle}>Add up to five favorites, anywhere. One is enough.</T>
     <View accessibilityRole="radiogroup" accessibilityLabel="What matters most right now?" style={{ gap: 10 }}><T style={s.sectionTitle}>What matters most right now?</T>{GOALS.map(goal => <Pressable key={goal.value} accessibilityRole="radio" accessibilityLabel={goal.label} accessibilityHint={goal.description} accessibilityState={{ checked: answers.goal === goal.value }} onPress={() => onChange({ ...answers, goal: goal.value })} style={[s.card, answers.goal === goal.value && { borderColor: '#E12D12', backgroundColor: '#FFF0EC' }]}><T style={{ fontWeight: '700' }}>{goal.label}</T><T style={s.small}>{goal.description}</T></Pressable>)}</View>
+    {homeEditor}
     <Field label="Restaurant name" value={query} onChangeText={setQuery} maxLength={150} placeholder="Pho99" returnKeyType="search" onSubmitEditing={() => { void search(); }} /><Field label="City (optional)" value={city} onChangeText={setCity} maxLength={100} placeholder="Coquitlam" /><Button title="Find restaurant" disabled={searching || !query.trim()} secondary onPress={() => { void search(); }} />{searching && <ActivityIndicator color="#E12D12" />}<T accessibilityLiveRegion="polite" style={s.small}>{status}</T>
     {items.map(item => <View key={item.id} style={s.card}><T style={{ fontWeight: '700' }}>{item.name}</T><T style={s.small}>{item.city} / {item.address}</T><Button title={answers.favorites.some(favorite => favorite.restaurantId === item.id) ? 'Added' : `Add ${item.name}`} secondary disabled={answers.favorites.length >= 5 || answers.favorites.some(favorite => favorite.restaurantId === item.id)} onPress={() => onChange({ ...answers, favorites: [...answers.favorites, { restaurantId: item.id, name: item.name, city: item.city, reasons: [], notes: '' }] })} /></View>)}
     {answers.favorites.map((favorite, index) => <View key={favorite.restaurantId} style={s.card}><T style={s.sectionTitle}>{favorite.name}</T><T style={s.small}>{favorite.city}</T><T>What keeps you coming back?</T>{reasons.map(reason => <Button key={reason} title={reason} secondary selected={favorite.reasons.includes(reason)} onPress={() => changeFavorite(index, { reasons: favorite.reasons.includes(reason) ? favorite.reasons.filter(value => value !== reason) : [...favorite.reasons, reason] })} />)}<Field label={`Tell us more about ${favorite.name} (optional)`} value={favorite.notes} onChangeText={notes => changeFavorite(index, { notes })} multiline maxLength={1500} style={{ minHeight: 100, textAlignVertical: 'top' }} /><Button title={`Remove ${favorite.name}`} secondary onPress={() => onChange({ ...answers, favorites: answers.favorites.filter((_, i) => i !== index) })} /></View>)}

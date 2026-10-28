@@ -33,6 +33,8 @@ The dedicated development Supabase project is `zzvnwqcclfxfaghvamjv` in `us-west
 
 MapTiler draws the map; Apify collects restaurant data. Without MapTiler, use location coordinates or the three launch-city shortcuts. Google Maps directions still work.
 
+Home address, optional current location, cuisine/food filters, and evidence-backed match bars are described in [the location and food search guide](docs/location-and-food-search.md).
+
 ### Google login
 
 In Google Auth Platform create a Web application client. Set its JavaScript origin to `http://localhost:3000`, and redirect URI to `https://zzvnwqcclfxfaghvamjv.supabase.co/auth/v1/callback`. Enter client ID and secret in Supabase Authentication → Sign In / Providers → Google. For a testing OAuth app, add the Google accounts allowed to test.
@@ -41,7 +43,7 @@ Supabase Site URL is `https://easteats.vercel.app`. Allowed callbacks include `h
 
 ### Database and workers
 
-The eight migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
+The nine migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
 
 `refresh-worker` and `apify-webhook` are deployed and configured. Their credentials are encrypted in Supabase Vault, accessible only through service-only functions. The fourth migration installs a one-minute schedule, which dispatches work only while active jobs exist. The worker returns an authenticated HTTP 202 before processing in the background. Built-in Supabase service credentials provide its bootstrap connection.
 

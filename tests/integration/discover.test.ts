@@ -33,3 +33,42 @@ it('includes sourced Asian fusion before food evidence is available',async()=>{
  m.source.mockResolvedValue([{...place,cuisines:['Asian fusion restaurant']}]);
  expect((await(await discover({...input,mode:'fusion'})).json()).items).toHaveLength(1);
 });
+it('rejects unrelated live source results rather than treating Google query membership as dish evidence',async()=>{
+ m.source.mockResolvedValue([{...place,name:'Rice Kitchen',foodTypes:['rice']},{...place,id:'korean-noodles',name:'Seoul Noodles',cuisines:['Korean restaurant']}]);
+ const data=await(await discover({...input,query:'Korean noodles'})).json();
+ expect(data.items.map((item:{restaurant:{id:string}})=>item.restaurant.id)).toEqual(['korean-noodles']);
+});
+it('requires explicit cuisine and food filters together even for authoritative sourced results',async()=>{
+ m.source.mockResolvedValue([{...place,id:'korean-rice',name:'Seoul Rice',cuisines:['Korean restaurant']},{...place,id:'chinese-noodles',name:'Noodle House',cuisines:['Chinese restaurant']},{...place,id:'korean-noodles',name:'Seoul Noodles',cuisines:['Korean restaurant']}]);
+ const data=await(await discover({...input,query:'',cuisine:'Korean',foodType:'noodles'})).json();
+ expect(data.items.map((item:{restaurant:{id:string}})=>item.restaurant.id)).toEqual(['korean-noodles']);
+});
+it('does not substitute pho or rice dishes for a specific ramen search',async()=>{
+ m.source.mockResolvedValue([{...place,id:'pho',name:'Pho 99',cuisines:['Vietnamese restaurant']},{...place,id:'rice',name:'Rice Kitchen',cuisines:['Japanese restaurant']},{...place,id:'ramen',name:'House Kitchen',cuisines:['Japanese restaurant'],listingCategories:['Ramen restaurant']}]);
+ const data=await(await discover({...input,query:'ramen'})).json();
+ expect(data.items.map((item:{restaurant:{id:string}})=>item.restaurant.id)).toEqual(['ramen']);
+});
+it('keeps unclassified source businesses out of dish results while scheduling their review enrichment',async()=>{
+ const unknown={...place,id:'unknown',name:'House Kitchen',cuisines:['Korean restaurant']};
+ m.source.mockResolvedValue([unknown]);m.queue.mockResolvedValueOnce({...job,status:'succeeded'}).mockResolvedValueOnce({...job,id:'reviews',kind:'details'});
+ const data=await(await discover({...input,query:'noodles'})).json();
+ expect(data.items).toEqual([]);expect(data.warning).toContain('missing dish details');expect(data.searchPhase).toBe('reviews');
+ expect(m.queue.mock.calls[1][1]).toBe('details');expect(m.queue.mock.calls[1][2].urls).toContain(unknown.sourceUrl);
+});
+const focusPlaces=()=>{
+ const feature=(quality:number,dishes:string[])=>({...demoRestaurants[0].features!,foodQuality:quality,value:quality,service:quality,atmosphere:quality,confidence:.9,cuisines:['Chinese'],dishes,evidence:[{id:'review',aspect:'food' as const,text:dishes.length?'The noodles are excellent.':'The food is decent.',sourceUrl:'https://example.com/review'}]});
+ return [{...place,id:'listed-low',name:'Noodle Dynasty',googleRating:1,features:feature(.1,[])},{...place,id:'incidental-high',name:'Broad Kitchen',googleRating:5,features:feature(.99,['noodles'])},{...place,id:'listed-medium',name:'Noodle Corner',features:feature(.5,[])}];
+};
+it('puts listed noodle matches before higher-scoring incidental mentions and preserves taste order within the listing tier',async()=>{
+ m.source.mockResolvedValue(focusPlaces());
+ const data=await(await discover({...input,query:'noodles'})).json();
+ expect(data.items.map((item:{restaurant:{id:string}})=>item.restaurant.id)).toEqual(['listed-medium','listed-low','incidental-high']);
+ expect(data.items[1].score).toBeLessThan(data.items[2].score);
+});
+it('preserves personal ranking for browsing and cuisine-only queries',async()=>{
+ m.source.mockResolvedValue(focusPlaces());
+ for(const query of ['', 'Chinese']){
+  const data=await(await discover({...input,query})).json();
+  expect(data.items.map((item:{restaurant:{id:string}})=>item.restaurant.id)).toEqual(['incidental-high','listed-medium','listed-low']);
+ }
+});

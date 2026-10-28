@@ -26,7 +26,7 @@ function kindLabel(kind: LocationSuggestion['kind']): string {
   return 'Location';
 }
 
-export default function LocationSearch({ proximity, onSelect }: { proximity?: Location | null; onSelect: (location: LocationSuggestion) => void }) {
+export default function LocationSearch({ proximity, onSelect, onQueryChange, label = 'Address or area', hint = 'Street address, intersection, neighborhood, or city.' }: { proximity?: Location | null; onSelect: (location: LocationSuggestion) => void; onQueryChange?: () => void; label?: string; hint?: string }) {
   const id = useId();
   const inputId = `location-input-${id}`;
   const listId = `location-options-${id}`;
@@ -99,6 +99,7 @@ export default function LocationSearch({ proximity, onSelect }: { proximity?: Lo
   }, [active, listId]);
 
   function change(value: string) {
+    onQueryChange?.();
     cancel(); queryRef.current = value; selectedLabel.current = null;
     setQuery(value); setItems([]); setActive(-1); setError('');
     setStatus(value.trim().length >= 3 ? 'waiting' : 'idle'); setOpen(value.trim().length >= 3);
@@ -126,8 +127,8 @@ export default function LocationSearch({ proximity, onSelect }: { proximity?: Lo
   const progress = status === 'waiting' || status === 'loading';
   const announcement = progress ? 'Finding matching addresses…' : status === 'ready' ? items.length ? `${items.length} matching locations. Choose one, or use the arrow keys and Enter.` : 'No matching locations. Try adding a city, postal code, or nearby intersection.' : '';
   return <form ref={container} className="location-search" onSubmit={submit}>
-    <label htmlFor={inputId}>Address or area</label>
-    <p className="location-search-hint" id={hintId}>Street address, intersection, neighborhood, or city.</p>
+    <label htmlFor={inputId}>{label}</label>
+    <p className="location-search-hint" id={hintId}>{hint}</p>
     <div className="location-search-row"><div className={`location-input-shell ${expanded ? 'is-open' : ''}`}>
       <span className="location-input-icon"><Pin /></span>
       <input ref={input} id={inputId} role="combobox" type="text" autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="search" maxLength={150} value={query} aria-autocomplete="list" aria-expanded={expanded} aria-controls={expanded ? listId : undefined} aria-activedescendant={expanded && active >= 0 ? `${listId}-${active}` : undefined} aria-describedby={`${hintId} ${statusId}`} aria-busy={progress} onKeyDown={navigate} onChange={event => change(event.target.value)} onFocus={() => { if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onClick={() => { if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onBlur={event => { if (event.relatedTarget instanceof Node && !container.current?.contains(event.relatedTarget)) { setOpen(false); setActive(-1); } }} placeholder="123 King St N, Waterloo" />

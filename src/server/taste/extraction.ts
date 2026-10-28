@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { featuresSchema, type RestaurantFeatures, type Review } from '../../lib/contracts.ts';
 import { structuredCall, TasteError, type ModelOptions } from './claude.ts';
+import {classifyRestaurant,hasPositiveFoodMention} from '../../lib/food-taxonomy.ts';
 
 const quoteSchema = z.object({ reviewId: z.string().min(1).max(300), quote: z.string().min(1).max(160) }).strict();
 const tagSchema = quoteSchema.extend({ value: z.string().min(1).max(100) }).strict();
@@ -109,21 +110,23 @@ export async function extractFeatures(reviews: Review[], options: ModelOptions =
     const mean = [...values.values()].reduce((sum, value) => sum + value, 0) / n;
     return { score: .5 + mean * .5 * n / (n + 5), count: n };
   };
-  const tags = (items: z.infer<typeof tagSchema>[], aspect: 'food' | 'fusion' = 'food') => [...new Set(items.map(item => {
+  const tags = (items: z.infer<typeof tagSchema>[], aspect: 'food' | 'fusion' = 'food') => [...new Set(items.flatMap(item => {
     getSource(item);
     if (!literal(item.quote).includes(literal(item.value))) throw new TasteError('INVALID_RESPONSE', 'A food tag was not present in its evidence.');
+    if (!hasPositiveFoodMention(item.quote,item.value)) return [];
     addEvidence(item, aspect);
-    return item.value.trim().toLowerCase();
+    return [item.value.trim().toLowerCase()];
   }))];
   const cuisines = tags(result.cuisines), dishes = tags(result.dishes), flavors = tags(result.flavors);
   for (const item of result.spice) addEvidence(item, 'food');
   for (const item of result.fusion) addEvidence(item, 'fusion');
   const food = aggregate('food');
   const foodSources = new Set(evidence.filter(item => item.aspect === 'food' || item.aspect === 'fusion').map(item => item.id));
-  return featuresSchema.parse({
+  const features=featuresSchema.parse({
     foodQuality: food.score, value: aggregate('value').score, service: aggregate('service').score, atmosphere: aggregate('atmosphere').score,
     cuisines, dishes, flavors,
     spice: result.spice.length ? result.spice.reduce((sum, item) => sum + item.value, 0) / result.spice.length : null,
     fusion: result.fusion.some(item => item.value), reviewCount: sources.size, confidence: foodSources.size / (foodSources.size + 8), evidence, updatedAt: new Date().toISOString(),
   });
+  return {...features,foodTypes:classifyRestaurant({name:'',cuisines:[],features}).foodTypes};
 }
