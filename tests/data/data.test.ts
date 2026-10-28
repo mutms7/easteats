@@ -53,10 +53,16 @@ describe('Apify adapter',()=>{
     expect(buildActorInput({query:'My favorite noodle shop'})).toMatchObject({searchStringsArray:['My favorite noodle shop'],scrapeReviewsPersonalData:false,reviewsSort:'newest'});
     expect(buildActorInput({query:'Noodles',city:'Tokyo'})).toHaveProperty('locationQuery','Tokyo');
   });
+  it('fans out broad searches while keeping a typed query focused',()=>{
+    const broad=buildActorInput({lat:43.47,lng:-80.54,radiusKm:10,maxPlaces:20});
+    expect(broad.searchStringsArray).toEqual(expect.arrayContaining(['Chinese restaurant','Japanese restaurant','Korean restaurant','Vietnamese restaurant']));
+    expect((broad.searchStringsArray as string[]).length).toBeGreaterThan(4);
+    expect(buildActorInput({lat:43.47,lng:-80.54,query:'sushi'}).searchStringsArray).toEqual(['sushi']);
+  });
   it('uses the fusion discovery query only when the user has not supplied one',()=>{
-    expect(buildActorInput({mode:'fusion',city:'Berkeley'})).toHaveProperty('searchStringsArray',['East Asian fusion restaurant']);
+    expect(buildActorInput({mode:'fusion',city:'Berkeley'})).toHaveProperty('searchStringsArray',['East Asian fusion restaurant','Korean fusion restaurant','Japanese fusion restaurant']);
     expect(buildActorInput({mode:'fusion',city:'Berkeley',query:'Korean tacos'})).toHaveProperty('searchStringsArray',['Korean tacos']);
-    expect(buildActorInput({mode:'for-you',city:'Berkeley'})).toHaveProperty('searchStringsArray',['East Asian restaurant']);
+    expect(buildActorInput({mode:'for-you',city:'Berkeley'})).toHaveProperty('searchStringsArray',expect.arrayContaining(['Chinese restaurant','Japanese restaurant']));
   });
   it('caps paid expansion and uses a bounded polygon',()=>{
     const input=buildActorInput({lat:37.87,lng:-122.27,radiusKm:5,maxPlaces:999,maxReviews:999});
