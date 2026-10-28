@@ -5,8 +5,9 @@ import { api } from './api';
 import { Button, Field, s, T, Title } from './ui';
 import type { Location as Point } from './types';
 type Area = Point & { label: string; primaryText?: string; secondaryText?: string; kind?: string };
-export function AreaPicker({ onChoose, onQueryChange, title = 'Where are we eating?', fieldLabel = 'Address or area', showGPS = true }: { onChoose: (point: Point, label: string) => void; onQueryChange?: () => void; title?: string; fieldLabel?: string; showGPS?: boolean }) {
-  const [query, setQuery] = useState('');
+export function AreaPicker({ onChoose, onQueryChange, initialValue = '', title = 'Where are we eating?', fieldLabel = 'Address or area', showGPS = true }: { onChoose: (point: Point, label: string) => void; onQueryChange?: () => void; initialValue?: string; title?: string; fieldLabel?: string; showGPS?: boolean }) {
+  const [query, setQuery] = useState(initialValue);
+  const initialPrefill = useRef(Boolean(initialValue));
   const [items, setItems] = useState<Area[]>([]);
   const [state, setState] = useState('');
   const [gps, setGps] = useState(false);
@@ -15,6 +16,7 @@ export function AreaPicker({ onChoose, onQueryChange, title = 'Where are we eati
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; operation.current += 1; }; }, []);
   useEffect(() => {
     const controller = new AbortController(); setItems([]);
+    if (initialPrefill.current && query === initialValue) { setState('Tap to enter a different location.'); return; }
     if (query.trim().length < 3) { setState('Enter at least three characters.'); return; }
     setState('Looking up addresses...');
     const timer = setTimeout(() => {
@@ -34,5 +36,5 @@ export function AreaPicker({ onChoose, onQueryChange, title = 'Where are we eati
     } catch { if (mounted.current && operation.current === id) setState('Could not find your location. Enter an address instead.'); }
     finally { if (mounted.current && operation.current === id) setGps(false); }
   }
-  return <View style={{ gap: 18 }}>{showGPS ? <Title>{title}</Title> : <T style={s.sectionTitle}>{title}</T>}<T style={s.subtitle}>Enter a street address, campus, neighborhood, or city.</T>{showGPS && <Button title={gps ? 'Finding your location...' : 'Use my location'} disabled={gps} onPress={() => { void locate(); }} />}<Field label={fieldLabel} value={query} onChangeText={value => { onQueryChange?.(); setQuery(value); }} placeholder="200 University Ave W, Waterloo" autoComplete="street-address" /><T accessibilityLiveRegion="polite" style={s.small}>{state}</T>{state === 'Looking up addresses...' && <ActivityIndicator color="#E12D12" />}{items.map((item, index) => <View key={`${item.label}-${index}`} style={s.card}><T style={{ fontWeight: '700' }}>{item.primaryText ?? item.label}</T>{item.secondaryText && <T style={s.small}>{item.secondaryText}</T>}{item.kind === 'street' && <T style={s.small}>Street location, approximate</T>}<Button title={`Choose ${item.label}`} secondary onPress={() => choose(item)} /></View>)}</View>;
+  return <View style={{ gap: 18 }}>{showGPS ? <Title>{title}</Title> : <T style={s.sectionTitle}>{title}</T>}<T style={s.subtitle}>Enter a street address, campus, neighborhood, or city.</T>{showGPS && <Button title={gps ? 'Finding your location...' : 'Use my location'} disabled={gps} onPress={() => { void locate(); }} />}<Field label={fieldLabel} value={query} onFocus={() => { if (initialPrefill.current) { initialPrefill.current = false; setQuery(''); setItems([]); onQueryChange?.(); } }} onChangeText={value => { initialPrefill.current = false; onQueryChange?.(); setQuery(value); }} placeholder="200 University Ave W, Waterloo" autoComplete="street-address" /><T accessibilityLiveRegion="polite" style={s.small}>{state}</T>{state === 'Looking up addresses...' && <ActivityIndicator color="#E12D12" />}{items.map((item, index) => <View key={`${item.label}-${index}`} style={s.card}><T style={{ fontWeight: '700' }}>{item.primaryText ?? item.label}</T>{item.secondaryText && <T style={s.small}>{item.secondaryText}</T>}{item.kind === 'street' && <T style={s.small}>Street location, approximate</T>}<Button title={`Choose ${item.label}`} secondary onPress={() => choose(item)} /></View>)}</View>;
 }
