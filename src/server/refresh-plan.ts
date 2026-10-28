@@ -11,7 +11,14 @@ export function refreshPlan(_restaurants:Restaurant[],input:DiscoverInput,_now=D
  const query=parts.filter(Boolean).join(' ').slice(0,200);
  return {kind:'discovery',input:{lat:Math.round(input.lat*100)/100,lng:Math.round(input.lng*100)/100,radiusKm:input.radiusKm,mode:input.mode,...(query?{query}:{})}};
 }
+export function enrichmentPlans(restaurants:Restaurant[],now=Date.now()):{urls:string[]}[]{
+ // Rank order prioritizes prominent matches; bounded batches cover more results.
+ // The caller gives each batch its own deterministic search ID for paid-call idempotency.
+ const urls=[...new Set(restaurants.filter(r=>!r.features||needsRefresh(r.features.updatedAt,FRESHNESS.features,now)).map(r=>r.sourceUrl))].slice(0,36);
+ const plans:{urls:string[]}[]=[];
+ for(let i=0;i<urls.length;i+=12)plans.push({urls:urls.slice(i,i+12)});
+ return plans;
+}
 export function enrichmentPlan(restaurants:Restaurant[],now=Date.now()):{urls:string[]}|null{
- const urls=[...new Set(restaurants.filter(r=>!r.features||needsRefresh(r.features.updatedAt,FRESHNESS.features,now)).map(r=>r.sourceUrl))].sort().slice(0,20);
- return urls.length?{urls}:null;
+ return enrichmentPlans(restaurants,now)[0]??null;
 }
