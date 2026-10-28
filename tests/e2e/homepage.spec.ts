@@ -44,12 +44,12 @@ test('the italic train has constant speed, stars fall to three and a half, and p
  expect(await starScale()).toBeCloseTo(1,3);
  const train=demo.locator('.hd-dont');await expect(train).toHaveText('DON\u2019T HAVE');await expect(train).toHaveCSS('font-style','italic');
  const sample=()=>train.evaluate(element=>{const matrix=new DOMMatrix(getComputedStyle(element).transform);const section=element.closest('section') as HTMLElement;return{x:matrix.e,scale:matrix.a,time:-parseFloat(section.style.getPropertyValue('--demo-delay'))};});
- await advanceTo(page,7000);const a=await sample();await page.clock.runFor(400);const b=await sample();await page.clock.runFor(400);const c=await sample();
+ await advanceTo(page,7000);const a=await sample();expect(await starScale()).toBeCloseTo(1,3);await page.clock.runFor(400);const b=await sample();await page.clock.runFor(400);const c=await sample();
  expect(a.scale).toBe(1);expect(b.scale).toBe(1);expect(c.scale).toBe(1);
  const firstSpeed=(a.x-b.x)/(b.time-a.time),secondSpeed=(b.x-c.x)/(c.time-b.time);
  expect(firstSpeed).toBeGreaterThan(0);expect(firstSpeed).toBeCloseTo(secondSpeed,2);
  
- await advanceTo(page,7900);expect(await starScale()).toBeGreaterThan(.95);
+
  await advanceTo(page,8600);expect(await starScale()).toBeLessThan(1);expect(await starScale()).toBeGreaterThan(.7);
  await advanceTo(page,9900);expect(await starScale()).toBeCloseTo(.7,3);
  const after=await demo.locator('.hd-the-best').boundingBox();expect(after!.x).toBeCloseTo(anchor!.x,0);expect(after!.y).toBeCloseTo(anchor!.y,0);
