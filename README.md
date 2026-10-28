@@ -1,110 +1,188 @@
-# East Eats
+# EastEats
 
-East Asian restaurant discovery with personal taste profiles, evidence-based food ranking, fusion finds, and location search. The responsive website also includes an installable web app shell. The native iPhone and Android client is in `mobile/`.
+**Discover great East Asian food based on what you actually like, not just star ratings.**
 
-Production: https://easteats.vercel.app. See [the release handoff](docs/production-release.md) and [native release steps](mobile/README.md) for verification and remaining account requirements.
+EastEats is a restaurant discovery app that combines real restaurant listings, review-backed food insights, and personalized taste profiles. Explore nearby restaurants, find specific dishes or cuisines, and understand *why* a place might be a good fit for you.
 
-## Run locally
+[**Try the web app**](https://easteats.vercel.app) · [Mobile app setup](mobile/README.md) · [Release notes](docs/production-release.md)
 
-Requires Node.js24 and npm. Clone this repository, then:
+## Features
 
-```sh
+- **Personalized recommendations:** Tell EastEats about your favorite restaurants and what you like about them. AI helps turn those preferences into an editable taste profile.
+- **Food-first rankings:** Compare restaurants using evidence about food, taste fit, value, distance, service, and atmosphere rather than treating Google star ratings as food-quality scores.
+- **East Asian and fusion discovery:** Browse restaurants by cuisine, food type, dish, or search term, with checks to filter out unrelated listings.
+- **Location-based search:** Explore nearby places or search for an address, neighborhood, or city. Optionally save a home location.
+- **Review-backed explanations:** See the signals and source excerpts behind recommendations when review evidence is available.
+- **Saved restaurants and maps:** Browse results in list and map views, bookmark places, and open directions.
+- **Web and mobile clients:** Use the responsive web app/PWA or the native Expo client for iOS and Android.
+
+## How it works
+
+1. **Create a taste profile.** Sign in and choose one to five favorite restaurants, explain what you enjoy, and select your dining priorities.
+2. **Find restaurants.** Search an area or dish. EastEats displays cached results while a background job fetches fresh listings through Apify.
+3. **Analyze reviews.** Separate enrichment jobs use Claude to extract structured, source-linked information about the food and dining experience.
+4. **Rank results.** A deterministic ranking algorithm combines the extracted signals, your preferences, and proximity. Missing evidence remains neutral rather than being treated as a negative review.
+
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Web | Next.js, React, TypeScript |
+| Mobile | React Native, Expo |
+| API | Next.js Route Handlers |
+| Database and auth | Supabase PostgreSQL, PostGIS, Supabase Auth |
+| Background jobs | pgmq, Supabase Cron, Edge Functions |
+| Restaurant data | Apify Google Maps crawler |
+| AI | Anthropic Claude |
+| Maps and geocoding | MapLibre, MapTiler |
+| Hosting | Vercel, Supabase |
+| Testing | Vitest, Playwright |
+
+### Architecture
+
+```mermaid
+flowchart TD
+    Web["Next.js web app"] --> API["Next.js API"]
+    Mobile["Expo mobile app"] --> API
+    API <--> Auth["Supabase Auth"]
+    API <--> DB[("PostgreSQL + PostGIS")]
+    API --> Taste["Claude taste interpretation"]
+    Taste --> DB
+    API --> Queue["pgmq job queue"]
+    Queue --> Worker["Supabase Edge workers"]
+    Worker <--> Apify["Apify restaurant data"]
+    Worker --> Extraction["Claude review extraction"]
+    Worker --> DB
+    Extraction --> DB
+    DB --> Rank["Restaurant ranking"]
+    Rank --> API
+```
+
+Restaurant collection and review analysis run asynchronously, so the API can serve existing and partial results without waiting for all processing to finish. The web and mobile clients share the same authenticated backend.
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 24 and npm
+- A Supabase project
+- Apify and Anthropic API credentials for live restaurant searches and AI features
+- A MapTiler key for map tiles and location suggestions (optional for basic setup)
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/mutms7/easteats.git
+cd easteats
 npm ci
+```
+
+### 2. Configure environment variables
+
+```bash
 cp .env.example .env.local
+```
+
+Fill in the relevant values in `.env.local`:
+
+| Variable | Description |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public Supabase API key |
+| `SUPABASE_SECRET_KEY` | Server-only Supabase secret key |
+| `APIFY_TOKEN` | Apify API token for restaurant data |
+| `ANTHROPIC_API_KEY` | Anthropic API key for taste and review analysis |
+| `NEXT_PUBLIC_MAPTILER_KEY` | Public MapTiler key for maps and geocoding |
+| `WORKER_SECRET`, `APIFY_WEBHOOK_SECRET` | Secrets for authenticated background processing |
+
+Additional options, including model selection and spending limits, are documented in [`.env.example`](.env.example).
+
+**Never commit `.env.local` or expose server-only keys in client code.** The native app must use public configuration only.
+
+### 3. Set up Supabase
+
+Apply the migrations in `supabase/migrations/` to your project, configure Supabase Auth (including Google OAuth and the appropriate redirect URLs), and deploy/configure the background Edge Functions for live data collection.
+
+See [Supabase and worker setup](supabase/README.md) for the queue, worker secrets, scheduling, and database policies. Live provider calls may incur charges; the application enforces database-backed spending limits.
+
+### 4. Start the web app
+
+```bash
 npm run setup:check
 npm run dev
 ```
 
-Open http://localhost:3000. Fill local credentials before using live services. `.env.local`, provider results, and referee logs are ignored by Git. Never commit them.
+Open [http://localhost:3000](http://localhost:3000).
 
-The dedicated development Supabase project is `zzvnwqcclfxfaghvamjv` in `us-west-1`. The previous GoodLife.AI project was paused, not deleted. Its data was preserved.
+For local background processing after configuring credentials:
 
-## Credentials
-
-| Local variable | Where it comes from |
-| --- | --- |
-| NEXT_PUBLIC_SUPABASE_URL | Supabase project connection settings |
-| NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY | Supabase Settings → API Keys → publishable key |
-| SUPABASE_SECRET_KEY | Supabase Settings → API Keys → secret key, server only |
-| APIFY_TOKEN | Apify Console → Settings → API & Integrations |
-| ANTHROPIC_API_KEY | Claude Console → API keys |
-| NEXT_PUBLIC_MAPTILER_KEY | Optional MapTiler key for embedded maps and general area geocoding |
-| WORKER_SECRET / APIFY_WEBHOOK_SECRET | Generated locally by npm run setup:check |
-
-MapTiler draws the map; Apify collects restaurant data. Without MapTiler, use location coordinates or the three launch-city shortcuts. Google Maps directions still work.
-
-Home address, optional current location, cuisine/food filters, and evidence-backed match bars are described in [the location and food search guide](docs/location-and-food-search.md).
-
-### Google login
-
-In Google Auth Platform create a Web application client. Set its JavaScript origin to `http://localhost:3000`, and redirect URI to `https://zzvnwqcclfxfaghvamjv.supabase.co/auth/v1/callback`. Enter client ID and secret in Supabase Authentication → Sign In / Providers → Google. For a testing OAuth app, add the Google accounts allowed to test.
-
-Supabase Site URL is `https://easteats.vercel.app`. Allowed callbacks include `https://easteats.vercel.app/auth/callback`, both localhost variants, and `easteats://auth/callback` for the native app. The Google client secret stays in Supabase, not the frontend.
-
-### Database and workers
-
-The nine migrations in `supabase/migrations/` have been applied to the dedicated development project. A new project must apply them in order. See [the worker guide](supabase/README.md).
-
-`refresh-worker` and `apify-webhook` are deployed and configured. Their credentials are encrypted in Supabase Vault, accessible only through service-only functions. The fourth migration installs a one-minute schedule, which dispatches work only while active jobs exist. The worker returns an authenticated HTTP 202 before processing in the background. Built-in Supabase service credentials provide its bootstrap connection.
-
-For local processing once the server secret is present:
-
-```sh
+```bash
 npm run worker:once
-# or a foreground development queue loop
+# or run a continuous local worker
 npm run worker
 ```
 
-The website can enqueue jobs independently. The hosted schedule keeps processing without the local runner. No schedule contains a plaintext credential. If a launch's outcome is unknown, the reservation stays held and the job requires reconciliation rather than an automatic second paid launch. Discovery publishes up to 20 businesses per invocation, favorites up to five. Review analysis runs as separate detail work, one restaurant per invocation. Existing and partial results stay usable.
+## Mobile development
 
-## Behavior
+The `mobile/` directory contains the Expo/React Native app, which uses the same backend API and Supabase accounts as the website.
 
-Google sign-in precedes the questionnaire. Add one to five favorite restaurants anywhere, with reasons. Claude compiles hidden, validated taste weights; the app shows an editable interpretation. Location is requested when choosing nearby recommendations. Exact user coordinates aren't stored; refresh areas are rounded to two decimal places.
-
-Every explicit favorite or discovery search starts a fresh Apify Google Maps lookup. Repeating the same search also starts a new run. Each submission carries a unique `searchId`; polling reuses that ID, including after terminal outcomes, so automatic checks cannot create duplicate paid calls. Interactive place lookups request zero reviews and publish available businesses immediately. Review enrichment follows separately. The list and map automatically append new places, fit every matching pin, and keep failed or pending searches distinct from empty results. See [the full search and map fix documentation](docs/search-and-map-fix.md).
-
-Location search suggests actual addresses, landmarks, neighborhoods, and cities as you type, with full location labels and keyboard selection. Choosing a suggestion searches restaurants around its coordinates. Suggestions use MapTiler and only a confirmed location launches Apify. See [address search behavior and live checks](docs/location-search.md).
-
-The questionnaire also asks what matters most: Hidden gems, Date night, Great service, Great value, or A bit of everything. These priorities change ranking weights, persist with the account, and can be edited from Taste. See [priority behavior and fallback details](docs/taste-goals.md).
-
-Restaurant order is calculated in code from food evidence, taste match, value, distance, service, and atmosphere. Google stars are displayed separately and never create a low-rating bonus. Cleanliness review concerns remain separate and visible. Missing features stay neutral with reduced confidence. Off-topic scraper results without East Asian cuisine evidence aren't included in discovery.
-
-Cached results remain usable while bounded searches run. Noninteractive detail maintenance uses a six-hour cache and food evidence expires after seven days. Manual search IDs bypass the old 24-hour area reuse. Fictional demo data never enters the live database. The explicit local demo requires `EAST_EATS_DEMO=true` and is disabled in production.
-
-Initial database spending ceilings are $120 Apify and $40 Anthropic. Every paid job reserves budget transactionally before calling a provider. Per-run caps are enforced by Apify as well. Review extraction uses up to eight batches of five reviews, with two concurrent requests and a 25-second timeout per request. It settles the full combined charge only after every batch finishes; unknown partial outcomes keep their reservation. These are application ceilings; coding/Design account usage is separate. Changes to `.env` budget values alone do not change database ceilings.
-
-## Verification
-
-```sh
-npm test
+```bash
+# From the repository root, after npm ci and web environment setup
+cd mobile
+npm ci
+node scripts/configure-from-web.mjs
 npm run typecheck
-npx playwright install chromium
-npm run verify:integration
-npm run secrets:check
+npm test
 ```
 
-The automated browser journey uses clearly labeled fictional fixtures. It verifies the login gate, questionnaire, reload, discovery, fusion filter, save/remove, details, and logout. It does not substitute for Google OAuth or paid-provider smoke testing.
+MapLibre requires a development or standalone build, not Expo Go. Platform builds, native configuration, and store release steps are in the [mobile README](mobile/README.md).
 
-`referree.sh` is the Claude Code Stop/SubagentStop judge. It delegates to a bounded Node runner and returns exit2 on failed proof, at most five times per session/agent/worktree. The sixth failure reports EXHAUSTED and permits stopping without declaring success. Set the Bash executable path in `.claude/settings.json` for non-Windows machines. Separate data/taste/ui agent definitions are included; the lead plus three helpers is the maximum team size.
+**Release status:** The website is deployed. The native clients are implemented, but store distribution and physical-device acceptance testing are separate release steps.
 
-## Verified live so far
+## Development and testing
 
-- A ten-place Berkeley Apify pilot succeeded, costing $0.0302.
-- The records were imported into the dedicated project, with reviewer personal fields removed.
-- A real Claude taste interpretation and five-review evidence extraction passed, costing $0.0064682 combined.
-- Rollback-only database checks passed profile isolation, ownership protection, and rejection of direct authenticated access to spending RPCs.
-- Authenticated API checks passed session verification, real Claude personalization, cached favorite search, nearby ranking, idempotent saved places, and MapTiler geocoding. The isolated test account was removed afterward.
-- The hosted worker returns 401 without authentication and 202 with its shared secret. Scheduled processing has successfully extracted and stored full review evidence from the existing live Apify run.
-- A real authenticated search for `Pho99` in `Coquitlam` launched Apify run `YcsypKL1B3JZEdoWp`, succeeded with five source businesses and zero reviews, and returned three matching Pho 99 listings through the app API. Its verified source charge was $0.0252. The isolated acceptance account was removed afterward. `scripts/verify-favorite-live.ts` is a guarded manual check, excluded from automated paid work.
+Run these commands from the repository root:
 
-Google OAuth is enabled. The local sign-in route was verified to redirect through Supabase to `accounts.google.com` with the correct Supabase callback. A person's first Google consent and completed return session still need a manual check. Full launch-city coverage, installed-phone behavior, and website deployment require further live verification. No hosted frontend URL is claimed yet.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the web development server |
+| `npm run build` | Build the production website |
+| `npm run typecheck` | Type-check the web code |
+| `npm test` | Run unit and integration tests |
+| `npm run test:e2e` | Run Playwright browser tests |
+| `npm run verify:integration` | Run the project's integration verification |
+| `npm run secrets:check` | Check for accidental secret exposure |
+| `npm run worker:once` | Process one batch of background jobs locally |
 
-## Design
+For Playwright, install the required browser once with `npx playwright install chromium`. Automated tests use fixtures and do not by themselves verify live OAuth, paid providers, or physical-device functionality.
 
-The shared footer identifies EastEats and its creator, William Chenyin. The public [About page](http://localhost:3000/about) explains the idea in a first-person note, including a hypothetical 3.5-star noodle shop and why food, atmosphere, and service matter differently to different people.
+## Project structure
 
-The homepage uses the owner's supplied ramen photo in the existing rounded frame. A silent 28-second animation opens automatically above sign-in, with word swaps, a constant-speed italic text pass, five gold stars changing to three and a half, a product walkthrough, and an account CTA. It blends into the page without player chrome. Sign-in stays visible on the first screen on phones and desktop. Keyboard pause/resume and reduced motion remain available, and playback makes no paid API calls. See [the storyboard and implementation notes](docs/homepage-demo.md).
+```text
+src/
+  app/              Next.js pages and API routes
+  components/       Web UI and maps
+  lib/              Shared contracts, taxonomy, and insights
+  server/
+    data/           Data collection, normalization, and worker integration
+    taste/          Taste interpretation, review extraction, and ranking
+mobile/             Expo/React Native client
+supabase/
+  functions/        Background Edge Functions
+  migrations/       Database schema, queues, and access policies
+docs/               Design, search behavior, and release documentation
+tests/              Unit, integration, and end-to-end tests
+```
 
-The flow follows the supplied [Claude design](https://claude.ai/artifact/UHeVBpfJD6HdtJVUVkgbnj#page-dcb81aee8d83): login, favorite questionnaire, taste interpretation, location, list/map discovery, saved places, and restaurant details. The updated visual direction follows the user's DoorDash reference: clean geometric Plus Jakarta Sans, one vibrant flame-red accent, white surfaces, rounded controls, and real food photography. The font is bundled locally with its license. See [the research and applied design choices](docs/design-research.md) and [photo credits](public/images/credits.md). Restaurant photos come from their own source records, with an explicit missing-photo state.
+## Documentation
 
-The `pg_net` extension reports an advisor warning because its extension namespace is `public`. Supabase's installed extension is not relocatable. Its request tables are denied to API roles; application secrets remain behind service-only Vault functions.
+- [Location and food search](docs/location-and-food-search.md)
+- [Taste priorities](docs/taste-goals.md)
+- [Search and map behavior](docs/search-and-map-fix.md)
+- [Database and background workers](supabase/README.md)
+- [Mobile development and release](mobile/README.md)
+- [Production release notes](docs/production-release.md)
+
+## Author
+
+Created by **William Chenyin**.
