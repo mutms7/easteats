@@ -33,7 +33,7 @@ describe('questionnaire behavior', () => {
 describe('price display',()=>{
  it('shows a provided price range or tier, and gives a truthful fallback',()=>{
   expect(priceLabel(null,'$10–20')).toBe('$10–20');
-  expect(priceLabel(2)).toBe('$');
+  expect(priceLabel(2)).toBe('$$');
   expect(priceLabel(null)).toBe('See menu for prices');
  });
 });
