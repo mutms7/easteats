@@ -26,7 +26,7 @@ function kindLabel(kind: LocationSuggestion['kind']): string {
   return 'Location';
 }
 
-export default function LocationSearch({ proximity, onSelect, onQueryChange, label = 'Address or area', hint = 'Street address, intersection, neighborhood, or city.' }: { proximity?: Location | null; onSelect: (location: LocationSuggestion) => void; onQueryChange?: () => void; label?: string; hint?: string }) {
+export default function LocationSearch({ proximity, onSelect, onQueryChange, initialValue = '', clearInitialOnFocus = false, label = 'Address or area', hint = 'Street address, intersection, neighborhood, or city.' }: { proximity?: Location | null; onSelect: (location: LocationSuggestion) => void; onQueryChange?: () => void; initialValue?: string; clearInitialOnFocus?: boolean; label?: string; hint?: string }) {
   const id = useId();
   const inputId = `location-input-${id}`;
   const listId = `location-options-${id}`;
@@ -37,10 +37,11 @@ export default function LocationSearch({ proximity, onSelect, onQueryChange, lab
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef<AbortController | null>(null);
   const version = useRef(0);
-  const queryRef = useRef('');
-  const selectedLabel = useRef<string | null>(null);
+  const queryRef = useRef(initialValue);
+  const selectedLabel = useRef<string | null>(initialValue || null);
+  const prefilled = useRef(Boolean(initialValue) && clearInitialOnFocus);
   const mounted = useRef(true);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialValue);
   const [items, setItems] = useState<LocationSuggestion[]>([]);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
@@ -99,12 +100,14 @@ export default function LocationSearch({ proximity, onSelect, onQueryChange, lab
   }, [active, listId]);
 
   function change(value: string) {
+    prefilled.current = false;
     onQueryChange?.();
     cancel(); queryRef.current = value; selectedLabel.current = null;
     setQuery(value); setItems([]); setActive(-1); setError('');
     setStatus(value.trim().length >= 3 ? 'waiting' : 'idle'); setOpen(value.trim().length >= 3);
   }
   function choose(item: LocationSuggestion) {
+    prefilled.current = false;
     cancel(); selectedLabel.current = item.label; queryRef.current = item.label;
     setQuery(item.label); setOpen(false); setActive(-1); setStatus('idle'); setError('');
     onSelect(item);
@@ -131,7 +134,7 @@ export default function LocationSearch({ proximity, onSelect, onQueryChange, lab
     <p className="location-search-hint" id={hintId}>{hint}</p>
     <div className="location-search-row"><div className={`location-input-shell ${expanded ? 'is-open' : ''}`}>
       <span className="location-input-icon"><Pin /></span>
-      <input ref={input} id={inputId} role="combobox" type="text" autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="search" maxLength={150} value={query} aria-autocomplete="list" aria-expanded={expanded} aria-controls={expanded ? listId : undefined} aria-activedescendant={expanded && active >= 0 ? `${listId}-${active}` : undefined} aria-describedby={`${hintId} ${statusId}`} aria-busy={progress} onKeyDown={navigate} onChange={event => change(event.target.value)} onFocus={() => { if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onClick={() => { if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onBlur={event => { if (event.relatedTarget instanceof Node && !container.current?.contains(event.relatedTarget)) { setOpen(false); setActive(-1); } }} placeholder="123 King St N, Waterloo" />
+      <input ref={input} id={inputId} role="combobox" type="text" autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="search" maxLength={150} value={query} aria-autocomplete="list" aria-expanded={expanded} aria-controls={expanded ? listId : undefined} aria-activedescendant={expanded && active >= 0 ? `${listId}-${active}` : undefined} aria-describedby={`${hintId} ${statusId}`} aria-busy={progress} onKeyDown={navigate} onChange={event => change(event.target.value)} onFocus={() => { if (prefilled.current) { change(''); return; } if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onClick={() => { if (prefilled.current) { change(''); return; } if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onBlur={event => { if (event.relatedTarget instanceof Node && !container.current?.contains(event.relatedTarget)) { setOpen(false); setActive(-1); } }} placeholder="123 King St N, Waterloo" />
       {query && <button className="location-clear" type="button" aria-label="Clear location" onMouseDown={event => event.preventDefault()} onClick={() => { change(''); input.current?.focus(); }}>×</button>}
       {expanded && <div className="location-suggestions"><ul id={listId} role="listbox" aria-label="Matching locations">{items.map((item, index) => {
         const parts = item.label.split(',').map(part => part.trim());
