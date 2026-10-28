@@ -61,6 +61,8 @@ Every explicit favorite or discovery search starts a fresh Apify Google Maps loo
 
 Location search suggests actual addresses, landmarks, neighborhoods, and cities as you type, with full location labels and keyboard selection. Choosing a suggestion searches restaurants around its coordinates. Suggestions use MapTiler and only a confirmed location launches Apify. See [address search behavior and live checks](docs/location-search.md).
 
+The questionnaire also asks what matters most: Hidden gems, Date night, Great service, or A bit of everything. These priorities change ranking weights, persist with the account, and can be edited from Taste. See [priority behavior and fallback details](docs/taste-goals.md).
+
 Restaurant order is calculated in code from food evidence, taste match, value, distance, service, and atmosphere. Google stars are displayed separately and never create a low-rating bonus. Cleanliness review concerns remain separate and visible. Missing features stay neutral with reduced confidence. Off-topic scraper results without East Asian cuisine evidence aren't included in discovery.
 
 Cached results remain usable while bounded searches run. Noninteractive detail maintenance uses a six-hour cache and food evidence expires after seven days. Manual search IDs bypass the old 24-hour area reuse. Fictional demo data never enters the live database. The explicit local demo requires `EAST_EATS_DEMO=true` and is disabled in production.
@@ -94,6 +96,8 @@ The automated browser journey uses clearly labeled fictional fixtures. It verifi
 Google OAuth is enabled. The local sign-in route was verified to redirect through Supabase to `accounts.google.com` with the correct Supabase callback. A person's first Google consent and completed return session still need a manual check. Full launch-city coverage, installed-phone behavior, and website deployment require further live verification. No hosted frontend URL is claimed yet.
 
 ## Design
+
+The shared footer identifies EastEats and its creator, William Chenyin. The public [About page](http://localhost:3000/about) explains the idea in a first-person note, including a hypothetical 3.5-star noodle shop and why food, atmosphere, and service matter differently to different people.
 
 The homepage uses the owner's supplied ramen photo in the existing rounded frame. A silent 28-second animation opens automatically above sign-in, with word swaps, a constant-speed italic text pass, five gold stars changing to three and a half, a product walkthrough, and an account CTA. It blends into the page without player chrome. Sign-in stays visible on the first screen on phones and desktop. Keyboard pause/resume and reduced motion remain available, and playback makes no paid API calls. See [the storyboard and implementation notes](docs/homepage-demo.md).
 

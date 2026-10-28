@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authNotice, parseDraft, safeExternalUrl, toggleReason, validFavorites } from '../../src/components/ui-helpers';
+import { authNotice, goalDraftKey, parseDraft, parseGoalDraft, safeExternalUrl, toggleReason, validFavorites } from '../../src/components/ui-helpers';
 const favorite = { restaurantId: 'a', name: 'Noodle Field', city: 'Berkeley', reasons: [], notes: '' };
 describe('questionnaire behavior', () => {
   it('requires a reason before a favorite can complete onboarding', () => {
@@ -18,6 +18,16 @@ describe('questionnaire behavior', () => {
     expect(parseDraft('broken')).toBeNull();
     expect(parseDraft(JSON.stringify(Array(6).fill(favorite)))).toBeNull();
     expect(parseDraft(JSON.stringify([{ ...favorite, notes: 7 }]))).toBeNull();
+  });
+  it('restores only known dining goals without changing legacy favorite drafts', () => {
+    for (const goal of ['hidden-gems', 'date-night', 'service', 'balanced']) expect(parseGoalDraft(JSON.stringify(goal))).toBe(goal);
+    for (const raw of [null, 'broken', '"unknown"', '{}', '[]', 'null', '12']) expect(parseGoalDraft(raw)).toBeUndefined();
+    expect(parseDraft(JSON.stringify([favorite]))).toEqual([favorite]);
+  });
+  it('keeps each user goal separate from favorites and other users', () => {
+    expect(goalDraftKey('user-a')).not.toBe(goalDraftKey('user-b'));
+    expect(goalDraftKey('a:b')).not.toBe(goalDraftKey('a%3Ab'));
+    expect(goalDraftKey('user-a')).not.toBe('east-eats:taste:user-a');
   });
 });
 describe('external source links', () => {

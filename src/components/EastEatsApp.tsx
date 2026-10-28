@@ -4,9 +4,11 @@ import dynamic from 'next/dynamic';
 import FieldGuideHero from './FieldGuideHero';
 import LocationSearch from './LocationSearch';
 import HomepageDemo from './HomepageDemo';
+import SiteFooter from './SiteFooter';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import type { DiscoverInput, DiscoverResponse, Favorite, Location, RankedRestaurant, RefreshJob, Restaurant, TasteInput, TasteProfile } from '@/lib/contracts';
-import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, mergeDiscoveryResults, parseDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
+import { parseTasteGoal, TASTE_GOAL_OPTIONS, type TasteGoal } from '@/lib/taste-goals';
+import { authNotice, distanceLabel, favoriteFromRestaurant, fitLabel, goalDraftKey, mergeDiscoveryResults, parseDraft, parseGoalDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
 
 const RestaurantMap = dynamic(() => import('./RestaurantMap'), { ssr: false, loading: () => <div className="empty">Loading map…</div> });
 type Session = { user: { id: string; email?: string } | null; configured: boolean; demo: boolean; dataMode: 'live' | 'demo'; profile: TasteProfile | null; answers: TasteInput | null; personalized?:boolean; warning?:string };
@@ -76,6 +78,7 @@ export default function EastEatsApp() {
   const locationOperation = useRef(0);
   const [session, setSession] = useState<Session | null>(null);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [goal, setGoal] = useState<TasteGoal>('balanced');
   const [draftReady, setDraftReady] = useState(false);
   const [profile, setProfile] = useState<TasteProfile | null>(null);
   const [personalized, setPersonalized] = useState(true);
@@ -114,7 +117,15 @@ export default function EastEatsApp() {
       const data = await request<Session>('/api/session');
       if (!mounted.current) return;
       setSession(data); setProfile(data.profile); setPersonalized(data.personalized ?? true); if(data.warning)setNotice(data.warning);
-      const draft = data.user ? parseDraft(localStorage.getItem(`east-eats:taste:${data.user.id}`)) : null;
+      let draft: Favorite[] | null = null;
+      let goalDraft: TasteGoal | undefined;
+      if (data.user) {
+        try {
+          draft = parseDraft(localStorage.getItem(`east-eats:taste:${data.user.id}`));
+          goalDraft = parseGoalDraft(localStorage.getItem(goalDraftKey(data.user.id)));
+        } catch { /* Saved answers still work when browser storage is unavailable. */ }
+      }
+      setGoal(goalDraft ?? parseTasteGoal(data.answers?.goal) ?? 'balanced');
       setFavorites(draft ?? data.answers?.favorites ?? []); setDraftReady(true);
       setStage(!data.user ? 'login' : data.profile ? 'location' : 'questionnaire');
       if (data.user) request<{ items: Restaurant[] }>('/api/saved').then(saved => { if (mounted.current) setSavedPlaces(saved.items); }).catch(() => {});
@@ -128,6 +139,7 @@ export default function EastEatsApp() {
     return () => { mounted.current = false; favoriteRequest.current?.abort(); };
   }, [boot]);
   useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(`east-eats:taste:${session.user.id}`, JSON.stringify(favorites)); } catch { /* A private browsing storage limit must not block the questionnaire. */ } } }, [favorites, draftReady, session?.user]);
+  useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(goalDraftKey(session.user.id), JSON.stringify(goal)); } catch { /* A preference can still be saved to the account without local storage. */ } } }, [goal, draftReady, session?.user]);
   useEffect(() => {
     if (stage !== 'location') { locationOperation.current += 1; setBusy(current => current === 'location' ? '' : current); }
   }, [stage]);
@@ -276,7 +288,7 @@ export default function EastEatsApp() {
     if (!validFavorites(favorites)) { setError('Choose at least one favorite and tell us what you like about each one.'); return; }
     setBusy('taste');
     try {
-      const data = await request<{ profile: TasteProfile; personalized: boolean; warning?: string }>('/api/taste', { favorites, ...(correction.trim() ? { correction: correction.trim() } : {}) });
+      const data = await request<{ profile: TasteProfile; personalized: boolean; warning?: string }>('/api/taste', { favorites, goal, ...(correction.trim() ? { correction: correction.trim() } : {}) });
       setProfile(data.profile); setPersonalized(data.personalized); setNotice(data.warning ?? ''); setCorrection(''); setStage('interpretation');
     } catch (e) { setError(e instanceof Error ? e.message : 'Your answers are still here. Please try again.'); } finally { setBusy(''); }
   }
@@ -310,7 +322,7 @@ export default function EastEatsApp() {
     locationOperation.current += 1;
     favoriteSearchId.current += 1; favoriteRequest.current?.abort(); setFavoriteJob(null); setFavoriteSearch(null); setSearchResults(null);
     setBusy('logout'); setError('');
-    try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setDraftReady(false); setResults(null); setSavedPlaces([]); setLocation(null); activeDiscovery.current = null; setDiscoveryIntent(null); setDiscoveryJob(null); setDiscoveryPhase('idle'); appliedResults.current = null; setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
+    try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setGoal('balanced'); setDraftReady(false); setResults(null); setSavedPlaces([]); setLocation(null); activeDiscovery.current = null; setDiscoveryIntent(null); setDiscoveryJob(null); setDiscoveryPhase('idle'); appliedResults.current = null; setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
   }
   const closeDetails = useCallback(() => setSelected(null), []);
 
@@ -325,12 +337,13 @@ export default function EastEatsApp() {
       {stage === 'login' && <FieldGuideHero demo={<HomepageDemo configured={Boolean(session?.configured)} />}><a className={`button login-button ${!session?.configured ? 'disabled' : ''}`} href='/auth/login' onClick={event => { if (!session?.configured) event.preventDefault(); }} aria-disabled={!session?.configured}><img src="/google-g.png" width="20" height="20" alt="" aria-hidden="true" />Continue with Google</a>{!session?.configured && <p className="small">Google sign-in is waiting for setup. Your account and recommendations will be available once it’s connected.</p>}{session?.demo && <button className="button" disabled={Boolean(busy)} onClick={async () => { setBusy('demo'); setError(''); try { await request('/api/demo/start', {}); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not open the demo.'); } finally { setBusy(''); } }}>{busy === 'demo' ? 'Opening demo…' : 'Try the demo'}</button>}{!session && <button className="button" onClick={() => { setStage('loading'); void boot(); }}>Retry connection</button>}</FieldGuideHero>}
 
       {stage === 'questionnaire' && <section><p className="eyebrow">Your taste, in good company</p><h1>Where do you<br />love eating?</h1><p className="lede">Add up to five favorites, anywhere. Three gives us a good start. One is enough.</p>
+        <fieldset className="taste-goal-fieldset" aria-describedby="taste-goal-help"><legend>What matters most right now?</legend><p id="taste-goal-help" className="small">Pick one. You can change it anytime in Taste.</p><div className="taste-goal-options">{TASTE_GOAL_OPTIONS.map(option => <label className={`taste-goal-card${goal === option.value ? ' is-selected' : ''}`} key={option.value}><input type="radio" name="taste-goal" value={option.value} checked={goal === option.value} onChange={() => setGoal(option.value)} aria-labelledby={`taste-goal-label-${option.value}`} aria-describedby={`taste-goal-${option.value}`} /><span><strong id={`taste-goal-label-${option.value}`}>{option.label}</strong><span id={`taste-goal-${option.value}`}>{option.description}</span></span></label>)}</div></fieldset>
         <form className="search-form" onSubmit={event => { event.preventDefault(); void searchFavorites(); }}><label>Restaurant name<input value={searchName} onChange={event => setSearchName(event.target.value)} maxLength={150} required placeholder="A favorite noodle shop…" /></label><label>City <span className="muted">(optional)</span><input value={searchCity} onChange={event => setSearchCity(event.target.value)} maxLength={100} placeholder="Any city" /></label><button className="button" disabled={busy === 'search'}>{busy === 'search' ? 'Searching…' : 'Find restaurant'}</button></form>
         {favoriteSearch?.phase === 'searching' && <p role="status" className="small">Searching Google Maps… <span>We’re checking {favoriteSearch.query}{favoriteSearch.city ? ` in ${favoriteSearch.city}` : ''}. Results appear here as they arrive.</span></p>}
         {searchResults !== null && <div className="search-results" aria-live="polite"><h2 className="small-heading">Search results{favoriteSearch ? ` for ${favoriteSearch.query}` : ''}</h2>{searchResults.length === 0 ? favoriteSearch?.phase === 'complete' ? <p>No places matched this search. Try adding a city or checking the restaurant name.</p> : favoriteSearch?.phase === 'stopped' ? <p>The search has not finished. Please try again.</p> : null : searchResults.map(restaurant => <div className="search-result" key={restaurant.id}><div><strong>{restaurant.name}</strong><span className="small">{restaurant.city} · {restaurant.cuisines.join(', ')}</span></div><button className="button" disabled={favorites.length >= 5 || favorites.some(favorite => favorite.restaurantId === restaurant.id)} onClick={() => setFavorites(current => [...current, favoriteFromRestaurant(restaurant)])}>{favorites.some(favorite => favorite.restaurantId === restaurant.id) ? 'Added' : 'Add favorite'}</button></div>)}</div>}
         <form onSubmit={submitTaste}><div className="favorites-list">{favorites.map((favorite, index) => <fieldset className="favorite-card" key={favorite.restaurantId}><legend>{favorite.name}</legend><div className="favorite-top"><p className="small">{favorite.city}</p><button type="button" className="text-button" onClick={() => setFavorites(current => current.filter(value => value.restaurantId !== favorite.restaurantId))} aria-label={`Remove ${favorite.name}`}>Remove</button></div><p>What keeps you coming back?</p><div className="reason-options">{REASONS.map(reason => <button className="chip" type="button" key={reason} aria-pressed={favorite.reasons.includes(reason)} onClick={() => setFavorites(current => current.map((value, i) => i === index ? toggleReason(value, reason) : value))}>{reason}</button>)}</div><label htmlFor={`notes-${index}`}>Tell us more <span className="muted">(optional)</span></label><textarea id={`notes-${index}`} value={favorite.notes} maxLength={1500} onChange={event => setFavorites(current => current.map((value, i) => i === index ? { ...value, notes: event.target.value } : value))} placeholder="The noodles have a great chew, and I don’t mind a rushed ordering experience." rows={3} /></fieldset>)}</div><div className="inline-actions"><button className="button primary" disabled={busy === 'taste' || !validFavorites(favorites)}>{busy === 'taste' ? 'Getting to know your tastes…' : 'Find my next meal'}</button>{profile && <button className="button" type="button" onClick={() => setStage(location ? 'explore' : 'location')}>Back to exploring</button>}</div>{favorites.length > 0 && !validFavorites(favorites) && <p className="small">Choose a reason or write a note for each favorite to continue.</p>}</form></section>}
 
-      {stage === 'interpretation' && profile && <section><p className="eyebrow">Your taste profile</p><h1>{personalized ? 'Here’s what we’re hearing.' : 'Your answers are saved.'}</h1><div className="field-note interpretation"><p>{personalized ? profile.interpretation : 'We could not personalize your recommendations yet. You can retry or explore with the default ranking.'}</p></div><form onSubmit={submitTaste}><label htmlFor="correction">Anything we missed?</label><textarea id="correction" rows={3} maxLength={1500} value={correction} onChange={event => setCorrection(event.target.value)} placeholder="Actually, I prefer mild food and I’d travel farther for great dumplings." /><div className="inline-actions"><button className="button" disabled={busy === 'taste'}>{busy === 'taste' ? 'Updating…' : personalized ? 'Update my tastes' : 'Retry personalization'}</button><button className="button primary" type="button" onClick={() => setStage(location ? 'explore' : 'location')}>Let’s find somewhere</button></div></form><button className="text-button" onClick={() => setStage('questionnaire')}>Edit my favorites</button></section>}
+      {stage === 'interpretation' && profile && <section><p className="eyebrow">Your taste profile</p><h1>{personalized ? 'Here’s what we’re hearing.' : 'Your answers are saved.'}</h1><p className="taste-goal-summary"><span>Right now:</span><strong>{TASTE_GOAL_OPTIONS.find(option => option.value === goal)?.label}</strong></p><div className="field-note interpretation"><p>{personalized ? profile.interpretation : 'Your priority is applied. We could not finish learning from your favorites yet. You can retry or start exploring.'}</p></div><form onSubmit={submitTaste}><label htmlFor="correction">Anything we missed?</label><textarea id="correction" rows={3} maxLength={1500} value={correction} onChange={event => setCorrection(event.target.value)} placeholder="Actually, I prefer mild food and I’d travel farther for great dumplings." /><div className="inline-actions"><button className="button" disabled={busy === 'taste'}>{busy === 'taste' ? 'Updating…' : personalized ? 'Update my tastes' : 'Retry personalization'}</button><button className="button primary" type="button" onClick={() => setStage(location ? 'explore' : 'location')}>Let’s find somewhere</button></div></form><button className="text-button" onClick={() => setStage('questionnaire')}>Edit my favorites</button></section>}
 
       {stage === 'location' && <section><p className="eyebrow">Let’s look around</p><h1>Where are<br />we eating?</h1><p className="lede">Find food near a street address, campus, neighborhood, or city.</p><button className="button primary" onClick={locate} disabled={busy === 'location'}>{busy === 'location' ? 'Finding your location…' : 'Use my location'}</button><p className="small">Choose your current location, or enter an address below.</p>{session?.dataMode === 'demo' && <div className="city-shortcuts">{BAY_AREAS.map(area => <button key={area.label} className="button" onClick={() => chooseLocation(area, area.label)}>{area.label}</button>)}</div>}<LocationSearch proximity={location} onSelect={area => chooseLocation(area, area.label)} />{location && <button className="text-button" onClick={() => setStage('explore')}>Back to results</button>}</section>}
 
@@ -342,7 +355,7 @@ export default function EastEatsApp() {
       {stage === 'saved' && <section><p className="eyebrow">For another day</p><h1>Your saved spots.</h1>{savedPlaces.length === 0 ? <div className="empty"><Bowl /><h2>A good meal to look forward to</h2><p>Save a restaurant while exploring, and it’ll be waiting here.</p><button className="button primary" onClick={() => setStage(location ? 'explore' : 'location')}>Find somewhere to eat</button></div> : <div className="saved-grid">{savedPlaces.map(restaurant => <article className="saved-card" key={restaurant.id}><RestaurantPhoto restaurant={restaurant} /><div className="card-content"><p className="eyebrow">{restaurant.city}</p><button className="restaurant-title" onClick={() => setSelected({ restaurant, score: 0, distanceKm: 0, confidence: restaurant.features?.confidence ?? 0, explanation: 'A place you saved to explore later.' })}>{restaurant.name}</button><p>{restaurant.cuisines.join(' · ')} · {priceLabel(restaurant.priceLevel)}</p><button className="button" onClick={() => void toggleSaved(restaurant)}>Remove from Saved</button></div></article>)}</div>}</section>}
     </main>
     {session?.user && profile && stage !== 'loading' && stage !== 'login' && stage !== 'location' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' ? 'page' : undefined} onClick={() => setStage(location ? 'explore' : 'location')}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>}
-    <footer className="site-footer">Food first. Your tastes, always.<span>East Asian favorites. New places to try.</span></footer>
+    <SiteFooter />
     {selected && <Details item={selected} saved={savedPlaces.some(place => place.id === selected.restaurant.id)} saving={savingIds.includes(selected.restaurant.id)} onSave={() => void toggleSaved(selected.restaurant)} onClose={closeDetails} />}
   </div>;
 }

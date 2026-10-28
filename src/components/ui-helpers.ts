@@ -1,4 +1,11 @@
 import { tasteInputSchema, type DiscoverResponse, type Favorite, type RankedRestaurant, type Restaurant } from '@/lib/contracts';
+import { parseTasteGoal, type TasteGoal } from '@/lib/taste-goals';
+
+export function goalDraftKey(userId: string): string { return `east-eats:taste-goal:${encodeURIComponent(userId)}`; }
+export function parseGoalDraft(raw: string | null): TasteGoal | undefined {
+  if (!raw) return undefined;
+  try { return parseTasteGoal(JSON.parse(raw) as unknown); } catch { return undefined; }
+}
 
 export const REASONS = ['The food itself', 'Regional dishes', 'Great value', 'Spice and bold flavors', 'Atmosphere', 'Friendly service'] as const;
 export function authNotice(search: string): string {

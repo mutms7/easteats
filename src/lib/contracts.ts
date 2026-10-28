@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TASTE_GOAL_IDS } from './taste-goals.ts';
 export const scoreSchema = z.number().min(0).max(1);
 export const weightsSchema = z.object({ food: scoreSchema, taste: scoreSchema, value: scoreSchema, proximity: scoreSchema, service: scoreSchema, atmosphere: scoreSchema });
 export type Weights = z.infer<typeof weightsSchema>;
@@ -9,7 +10,7 @@ export const restaurantSchema = z.object({ id: z.string(), name: z.string(), add
 export type Restaurant = z.infer<typeof restaurantSchema>;
 export const favoriteSchema = z.object({ restaurantId: z.string().max(300), name: z.string().min(1).max(200), city: z.string().max(150), reasons: z.array(z.string().max(100)).max(10), notes: z.string().max(1500) }).refine(f => f.reasons.length > 0 || f.notes.trim().length > 0, { message: 'Tell us what you like about each restaurant.' });
 export type Favorite = z.infer<typeof favoriteSchema>;
-export const tasteInputSchema = z.object({ favorites: z.array(favoriteSchema).min(1).max(5), correction: z.string().max(1500).optional() });
+export const tasteInputSchema = z.object({ favorites: z.array(favoriteSchema).min(1).max(5), correction: z.string().max(1500).optional(), goal: z.enum(TASTE_GOAL_IDS).optional() });
 export type TasteInput = z.infer<typeof tasteInputSchema>;
 export const tasteProfileSchema = z.object({ version: z.number().int().positive(), weights: weightsSchema, cuisines: z.array(z.string()).max(30), dishes: z.array(z.string()).max(30), flavors: z.array(z.string()).max(30), spicePreference: scoreSchema.nullable(), fusionPreference: scoreSchema.nullable(), interpretation: z.string().max(1200), updatedAt: z.string() });
 export type TasteProfile = z.infer<typeof tasteProfileSchema>;

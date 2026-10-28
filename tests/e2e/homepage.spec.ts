@@ -75,3 +75,19 @@ test('phone scenes fit and keyboard or reduced-motion preferences can stop anima
  await expect(demo.getByRole('link',{name:'Create your account'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await demo.locator('.hd-stage').screenshot({path:testInfo.outputPath('phone-final.png')});
 });
+
+for(const viewport of [{width:375,height:812},{width:1440,height:1000}]){
+ test(`the footer opens William's About page at ${viewport.width}px`,async({page},testInfo)=>{
+  await page.setViewportSize(viewport);await home(page);
+  const footer=page.getByRole('contentinfo');
+  await expect(footer).toContainText('EastEats \u00a9 2026');await expect(footer).toContainText('Created by William Chenyin');
+  await footer.getByRole('link',{name:'About',exact:true}).click();await expect(page).toHaveURL(/\/about$/);
+  await expect(page.getByRole('heading',{level:1,name:/I just want a really/})).toBeVisible();
+  await expect(page.getByText('A note from William Chenyin',{exact:true})).toBeVisible();
+  await expect(page.getByText(/Say a noodle shop has 3.5 stars/)).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:testInfo.outputPath('about.png'),fullPage:true});
+  await expect(page.getByRole('link',{name:'Find my next meal',exact:false})).toHaveAttribute('href','/');
+  await expect(page.getByRole('contentinfo').getByRole('link',{name:'About',exact:true})).toHaveAttribute('aria-current','page');
+ });
+}
