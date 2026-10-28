@@ -49,6 +49,8 @@ test('the italic train has constant speed, stars fall to three and a half, and p
  const firstSpeed=(a.x-b.x)/(b.time-a.time),secondSpeed=(b.x-c.x)/(c.time-b.time);
  expect(firstSpeed).toBeGreaterThan(0);expect(firstSpeed).toBeCloseTo(secondSpeed,2);
  await demo.locator('.hd-stage').screenshot({path:testInfo.outputPath('train.png')});
+ await advanceTo(page,7900);expect(await starScale()).toBeCloseTo(1,3);
+ await advanceTo(page,8600);expect(await starScale()).toBeLessThan(1);expect(await starScale()).toBeGreaterThan(.7);
  await advanceTo(page,9900);expect(await starScale()).toBeCloseTo(.7,3);
  const after=await demo.locator('.hd-the-best').boundingBox();expect(after!.x).toBeCloseTo(anchor!.x,0);expect(after!.y).toBeCloseTo(anchor!.y,0);
  await demo.locator('.hd-stage').screenshot({path:testInfo.outputPath('three-and-half-stars.png')});
@@ -58,12 +60,18 @@ test('the italic train has constant speed, stars fall to three and a half, and p
  await expect(demo.locator('.hd-final h3>span')).toHaveCSS('color','rgb(225, 45, 18)');
  expect(await demo.textContent()).not.toMatch(/[\u00c2\u00c3\u00e2]/u);expect(paid).toEqual([]);
  await demo.locator('.hd-stage').screenshot({path:testInfo.outputPath('final.png')});
+ const replay=demo.getByRole('button',{name:'Replay demo'});await expect(replay).toBeVisible();
+ await replay.click();await expect(demo).toHaveAttribute('data-scene','wordmark');await expect(demo).toHaveAttribute('data-running','true');
+ await expect(replay).toHaveCount(0);await page.clock.runFor(1200);await expect(demo).toHaveAttribute('data-complete','false');
+ expect(paid).toEqual([]);
 });
 
-test('phone scenes fit and keyboard or reduced-motion preferences can stop animation without player buttons',async({page},testInfo)=>{
+test('clicking the demo does not pause it; keyboard and reduced-motion controls still work',async({page},testInfo)=>{
  await page.setViewportSize({width:375,height:667});await home(page);
  const demo=page.getByRole('region',{name:'East Eats product demo'});
- await demo.focus();await expect(demo).toHaveAttribute('data-running','false');const paused=await demo.getAttribute('data-time');await page.clock.runFor(700);expect(await demo.getAttribute('data-time')).toBe(paused);
+ await demo.focus();await expect(demo).toHaveAttribute('data-running','true');
+ await demo.click({position:{x:20,y:20}});await expect(demo).toHaveAttribute('data-running','true');
+ await demo.press('Escape');await expect(demo).toHaveAttribute('data-running','false');const paused=await demo.getAttribute('data-time');await page.clock.runFor(700);expect(await demo.getAttribute('data-time')).toBe(paused);
  await demo.press('Enter');await expect(demo).toHaveAttribute('data-running','true');
  for(const [time,name] of [[5600,'stars'],[7400,'train'],[9900,'reviews'],[14800,'favorites'],[23300,'nearby']] as const){
   await advanceTo(page,time);
