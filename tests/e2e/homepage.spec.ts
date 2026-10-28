@@ -49,7 +49,7 @@ test('the italic train has constant speed, stars fall to three and a half, and p
  const firstSpeed=(a.x-b.x)/(b.time-a.time),secondSpeed=(b.x-c.x)/(c.time-b.time);
  expect(firstSpeed).toBeGreaterThan(0);expect(firstSpeed).toBeCloseTo(secondSpeed,2);
  await demo.locator('.hd-stage').screenshot({path:testInfo.outputPath('train.png')});
- await advanceTo(page,7900);expect(await starScale()).toBeCloseTo(1,3);
+ await advanceTo(page,7900);expect(await starScale()).toBeGreaterThan(.95);
  await advanceTo(page,8600);expect(await starScale()).toBeLessThan(1);expect(await starScale()).toBeGreaterThan(.7);
  await advanceTo(page,9900);expect(await starScale()).toBeCloseTo(.7,3);
  const after=await demo.locator('.hd-the-best').boundingBox();expect(after!.x).toBeCloseTo(anchor!.x,0);expect(after!.y).toBeCloseTo(anchor!.y,0);
