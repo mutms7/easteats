@@ -5,6 +5,7 @@ import {demoState} from '@/server/demo';
 import {compileTasteProfile,provisionalTasteProfile} from '@/server/taste';
 import {freshOperation,reserveClaude,settleClaude} from '@/server/repository';
 import {assertPricedModel,modelCost} from '@/server/pricing';
+export const maxDuration=60;
 export const POST=endpoint(async request=>{
  const s=await requireSession();const input=tasteInputSchema.parse(await readJson(request));
  if(s.demo){demoState.answers=input;demoState.profile=provisionalTasteProfile(input.goal);return json({profile:demoState.profile,personalized:false,warning:input.goal?'Demo mode: your selected priority is applied to fictional places. Favorite interpretation needs the live connection.':'This is a demo using default preferences.'});}

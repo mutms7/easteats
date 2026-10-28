@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+.expo-config-check.json
+dist/
+ios/
+android/
+.env*
+!.env.example
+credentials.json
+*.p12
+*.mobileprovision
+*.jks
+*.keystore
+*.ipa
+*.aab
+*.apk

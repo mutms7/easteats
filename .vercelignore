@@ -1,0 +1,12 @@
+.env*
+.local
+.referee
+.next
+.next-e2e
+mobile
+tests
+test-results
+playwright-report
+supabase/.temp
+supabase/.branches
+docs

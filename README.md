@@ -1,6 +1,8 @@
 # East Eats
 
-East Asian restaurant discovery with personal taste profiles, evidence-based food ranking, fusion finds, and location search. The responsive website also includes an installable web app shell.
+East Asian restaurant discovery with personal taste profiles, evidence-based food ranking, fusion finds, and location search. The responsive website also includes an installable web app shell. The native iPhone and Android client is in `mobile/`.
+
+Production: https://easteats.vercel.app. See [the release handoff](docs/production-release.md) and [native release steps](mobile/README.md) for verification and remaining account requirements.
 
 ## Run locally
 
@@ -35,7 +37,7 @@ MapTiler draws the map; Apify collects restaurant data. Without MapTiler, use lo
 
 In Google Auth Platform create a Web application client. Set its JavaScript origin to `http://localhost:3000`, and redirect URI to `https://zzvnwqcclfxfaghvamjv.supabase.co/auth/v1/callback`. Enter client ID and secret in Supabase Authentication → Sign In / Providers → Google. For a testing OAuth app, add the Google accounts allowed to test.
 
-In Supabase URL Configuration set Site URL to `http://localhost:3000` and allow `http://localhost:3000/auth/callback`. Add the deployed app's origin and callback when hosting is configured. The Google client secret stays in Supabase, not the frontend.
+Supabase Site URL is `https://easteats.vercel.app`. Allowed callbacks include `https://easteats.vercel.app/auth/callback`, both localhost variants, and `easteats://auth/callback` for the native app. The Google client secret stays in Supabase, not the frontend.
 
 ### Database and workers
 
@@ -61,7 +63,7 @@ Every explicit favorite or discovery search starts a fresh Apify Google Maps loo
 
 Location search suggests actual addresses, landmarks, neighborhoods, and cities as you type, with full location labels and keyboard selection. Choosing a suggestion searches restaurants around its coordinates. Suggestions use MapTiler and only a confirmed location launches Apify. See [address search behavior and live checks](docs/location-search.md).
 
-The questionnaire also asks what matters most: Hidden gems, Date night, Great service, or A bit of everything. These priorities change ranking weights, persist with the account, and can be edited from Taste. See [priority behavior and fallback details](docs/taste-goals.md).
+The questionnaire also asks what matters most: Hidden gems, Date night, Great service, Great value, or A bit of everything. These priorities change ranking weights, persist with the account, and can be edited from Taste. See [priority behavior and fallback details](docs/taste-goals.md).
 
 Restaurant order is calculated in code from food evidence, taste match, value, distance, service, and atmosphere. Google stars are displayed separately and never create a low-rating bonus. Cleanliness review concerns remain separate and visible. Missing features stay neutral with reduced confidence. Off-topic scraper results without East Asian cuisine evidence aren't included in discovery.
 

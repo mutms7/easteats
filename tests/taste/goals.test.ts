@@ -21,8 +21,8 @@ describe('questionnaire priorities', () => {
     for (const goal of TASTE_GOAL_IDS) expect(tasteInputSchema.parse({ ...input, goal }).goal).toBe(goal);
     expect(tasteInputSchema.safeParse({ ...input, goal: 'low-ratings' }).success).toBe(false);
   });
-  it('offers the four agreed labels and safely parses legacy draft values', () => {
-    expect(TASTE_GOAL_OPTIONS.map(option => option.label)).toEqual(['Hidden gems', 'Date night', 'Great service', 'A bit of everything']);
+  it('offers the five agreed labels and safely parses legacy draft values', () => {
+    expect(TASTE_GOAL_OPTIONS.map(option => option.label)).toEqual(['Hidden gems', 'Date night', 'Great service', 'Great value', 'A bit of everything']);
     for (const goal of TASTE_GOAL_IDS) expect(parseTasteGoal(goal)).toBe(goal);
     for (const value of [undefined, null, '', 'low-ratings', 'balanced ', {}, []]) expect(parseTasteGoal(value)).toBeUndefined();
   });
@@ -58,6 +58,27 @@ describe('questionnaire priorities', () => {
     expect(result.interpretation).toContain('For date night');
     expect(result.version).toBe(3);
     expect(request.tools).toBeUndefined();
+  });
+  it('prioritizes review-backed value without treating cheap prices as proof', async () => {
+    const foodFirst = place('food-first', .95, .5, .5);
+    foodFirst.features!.value = .45; foodFirst.priceLevel = 1;
+    const goodValue = place('review-backed-value', .72, .5, .5);
+    goodValue.features!.value = .95; goodValue.priceLevel = 3;
+    const cheapOnly = place('cheap-price-only', .72, .5, .5);
+    cheapOnly.features!.value = null; cheapOnly.priceLevel = 1;
+    const restaurants = [foodFirst, goodValue, cheapOnly];
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => providerResponse());
+    const foodProfile = await compileTasteProfile({ ...input, goal: 'hidden-gems' }, { apiKey: 'test-only', fetch: fetcher });
+    const valueProfile = await compileTasteProfile({ ...input, goal: 'value' }, { apiKey: 'test-only', fetch: fetcher });
+    expect(rankRestaurants(restaurants, foodProfile, origin)[0].restaurant.id).toBe('food-first');
+    expect(rankRestaurants(restaurants, valueProfile, origin)[0].restaurant.id).toBe('review-backed-value');
+    const scores = rankRestaurants(restaurants, valueProfile, origin).map(item => [item.restaurant.id, item.score]);
+    goodValue.priceLevel = 1; cheapOnly.priceLevel = 4;
+    expect(rankRestaurants(restaurants, valueProfile, origin).map(item => [item.restaurant.id, item.score])).toEqual(scores);
+    expect(valueProfile.interpretation).toContain('Review-backed value');
+    const request = JSON.parse(fetcher.mock.calls[1][1]?.body as string);
+    expect(JSON.parse(request.messages[0].content).untrusted_data.goal).toBe('value');
+    expect(request.system).toContain('A low price alone is not evidence of good value');
   });
   it('preserves the old interpretation and weights for callers without a goal', async () => {
     const model = modelResult();
