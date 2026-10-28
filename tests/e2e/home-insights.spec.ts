@@ -30,6 +30,22 @@ async function selectHome(page: Page, text: string, label: string) {
   await expect(editor.getByRole('status').filter({ hasText: 'Home address saved.' })).toBeVisible();
 }
 
+test('saved home autofills location search and clears on focus without deleting the saved address @smoke',async({page})=>{
+ const state=await fixtures(page,home);
+ await page.goto('/');
+ await expect(page.locator('.restaurant-card')).toHaveCount(1);
+ await page.getByRole('button',{name:'Change area',exact:true}).first().click();
+ const field=page.getByRole('combobox',{name:'Address or area'});
+ await expect(field).toHaveValue(home.label);
+ await field.click();
+ await expect(field).toHaveValue('');
+ // Clearing the input is not an account setting change or a new paid search.
+ expect(state.locations).toHaveLength(0);
+ expect(state.discoveries).toHaveLength(1);
+ await page.getByRole('button',{name:'Search near saved home'}).click();
+ await expect(page.locator('.restaurant-card')).toHaveCount(1);
+ expect(state.discoveries).toHaveLength(2);
+});
 test('home save is private, waits for onboarding, and becomes one initial search per visit @smoke', async ({ page }) => {
   const state = await fixtures(page, null, false);
   await page.goto('/');
