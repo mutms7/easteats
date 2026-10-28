@@ -5,7 +5,8 @@ import {demoRestaurants,demoState} from '@/server/demo';
 import {cachedNearby,queueRefresh,searchPlaces} from '@/server/repository';
 import {defaultTasteProfile,rankRestaurants} from '@/server/taste';
 import {isEastAsianRestaurant,isAsianFusionRestaurant} from '@/lib/eligibility';
-import {refreshPlan,enrichmentPlan} from '@/server/refresh-plan';
+import {refreshPlan,enrichmentPlans} from '@/server/refresh-plan';
+import {createHash} from 'node:crypto';
 import {classifyRestaurant,matchRestaurantSearch,restaurantSearchRelevance} from '@/lib/food-taxonomy';
 export const POST=endpoint(async request=>{
  const s=await requireSession();const input=discoverInputSchema.parse(await readJson(request));let profile=demoState.profile,answers=s.demo?demoState.answers:null;
@@ -36,8 +37,17 @@ export const POST=endpoint(async request=>{
  const items=rankRestaurants(selected,active,input,input.radiusKm).sort((a,b)=>(relevance.get(b.restaurant.id)??0)-(relevance.get(a.restaurant.id)??0));
  if(!s.demo&&job?.status==='succeeded'){
   const candidates=rankRestaurants(eligible,active,input,input.radiusKm).map(item=>item.restaurant);
-  const enrichment=enrichmentPlan(candidates);
-  if(enrichment)try{enrichmentJob=await queueRefresh(s.client!,'details',enrichment,input.searchId);}catch{warning='Places are available. Review updates could not start right now.';}
+  const plans=enrichmentPlans(candidates);
+  for(const [index,plan] of plans.entries()){
+   const hex=createHash('sha256').update(`${input.searchId}:reviews:${index}`).digest('hex');
+   const batchId=index===0?input.searchId!:`${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-8${hex.slice(17,20)}-${hex.slice(20,32)}`;
+   try{
+    const next=await queueRefresh(s.client!,'details',plan,batchId);
+    // Track the first active batch. Each subsequent completed batch makes
+    // the next one eligible for client polling without launching a duplicate.
+    if(next && !enrichmentJob && ['queued','running'].includes(next.status))enrichmentJob=next;
+   }catch{warning='Places are available, but some review updates could not start right now.';}
+  }
  }
  const activeJob=(value:typeof job)=>!!value&&['queued','running'].includes(value.status);
  const searchPhase=activeJob(job)?'places':activeJob(enrichmentJob)?'reviews':'complete';
