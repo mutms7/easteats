@@ -8,7 +8,7 @@ async function questionnaire(page:Page,userId:string,goal?:string){
  await page.goto('/');await expect(page.getByRole('group',{name:'What matters most right now?'})).toBeVisible();
 }
 
-test('five goals persist through reload, save, correction, and later editing without extra calls',async({page},testInfo)=>{
+test('five goals persist through reload, save, correction, and later editing without extra calls @smoke',async({page},testInfo)=>{
  await page.setViewportSize({width:375,height:812});
  const submitted:{goal:string;correction?:string;favorites:unknown[]}[]=[];
  await page.route('**/api/taste',route=>{submitted.push(route.request().postDataJSON());return route.fulfill({json:{profile,personalized:true}});});

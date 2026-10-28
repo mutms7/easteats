@@ -30,7 +30,7 @@ async function selectHome(page: Page, text: string, label: string) {
   await expect(editor.getByRole('status').filter({ hasText: 'Home address saved.' })).toBeVisible();
 }
 
-test('home save is private, waits for onboarding, and becomes one initial search per visit', async ({ page }) => {
+test('home save is private, waits for onboarding, and becomes one initial search per visit @smoke', async ({ page }) => {
   const state = await fixtures(page, null, false);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Where do you.*love eating/ })).toBeVisible();

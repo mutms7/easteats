@@ -13,6 +13,7 @@
     "verify:taste": "node scripts/verify.mjs taste",
     "verify:ui": "node scripts/verify.mjs ui",
     "verify:integration": "node scripts/verify.mjs integration",
+    "verify:ci": "node scripts/verify.mjs ci",
     "test:e2e": "playwright test",
     "smoke:live": "node --import tsx scripts/smoke-live.mjs",
     "setup:check": "node scripts/check-setup.mjs --generate-secrets",

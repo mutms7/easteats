@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('account deletion needs confirmation and preserves the account on failure', async ({ page }) => {
+test('account deletion needs confirmation and preserves the account on failure @smoke', async ({ page }) => {
   let deletes = 0;
   await page.route('**/api/session', route => route.fulfill({ json: { user: { id: 'delete-fixture', email: 'fixture@example.invalid' } } }));
   await page.route('**/api/account', route => {

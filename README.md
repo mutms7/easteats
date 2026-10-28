@@ -150,7 +150,8 @@ Run these commands from the repository root:
 | `npm run typecheck` | Type-check the web code |
 | `npm test` | Run unit and integration tests |
 | `npm run test:e2e` | Run Playwright browser tests |
-| `npm run verify:integration` | Run the project's integration verification |
+| `npm run verify:ci` | Run unit tests, typecheck, build, and a focused browser smoke suite |
+| `npm run verify:integration` | Run all unit, build, and browser regression tests |
 | `npm run secrets:check` | Check for accidental secret exposure |
 | `npm run worker:once` | Process one batch of background jobs locally |
 

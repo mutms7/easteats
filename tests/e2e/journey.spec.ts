@@ -1,9 +1,9 @@
 import {test,expect} from '@playwright/test';
-test('login gate protects data and rejects cross-site writes',async({request})=>{
+test('login gate protects data and rejects cross-site writes @smoke',async({request})=>{
  expect((await request.get('/api/saved')).status()).toBe(401);
  expect((await request.post('/api/taste',{headers:{origin:'https://other.example'},data:{}})).status()).toBe(403);
 });
-test('phone journey: questionnaire, discovery, saved places, details, reload and logout',async({page})=>{
+test('phone journey: questionnaire, discovery, saved places, details, reload and logout @smoke',async({page})=>{
  await page.setViewportSize({width:390,height:844});await page.goto('/');
  await expect(page.getByRole('link',{name:/Continue with Google/})).toBeVisible();
  await expect(page.getByRole('heading',{name:/Where do you/})).toHaveCount(0);

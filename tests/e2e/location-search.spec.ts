@@ -12,7 +12,7 @@ async function locationStage(page:Page){
  await page.clock.install();
 }
 
-test('address suggestions debounce, support keyboard selection, and use fresh searches when changing location',async({page},testInfo)=>{
+test('address suggestions debounce, support keyboard selection, and use fresh searches when changing location @smoke',async({page},testInfo)=>{
  const geocodes:{query:string;proximity?:{lat:number;lng:number}}[]=[];
  const discoveries:{searchId:string;lat:number;lng:number}[]=[];
  await page.route('**/api/geocode',route=>{const input=route.request().postDataJSON();geocodes.push(input);return route.fulfill({json:{items:[input.query.includes('2991')?second:address]}});});

@@ -33,7 +33,7 @@ test('cached favorite matches remain selectable during a live Google Maps check'
   await expect(page.getByRole('group', { name: 'Pho99' })).toBeVisible();
 });
 
-test('a delayed favorite search stays pending and shows Pho99 without resubmission', async ({ page }) => {
+test('a delayed favorite search stays pending and shows Pho99 without resubmission @smoke', async ({ page }) => {
   let polls = 0;
   const submitted: { query: string; city: string; searchId: string }[] = [];
   await page.route('**/api/places/search', route => {

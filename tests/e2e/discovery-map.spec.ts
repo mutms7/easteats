@@ -27,7 +27,7 @@ async function chooseWaterloo(page: Page) {
   await page.getByRole('option', { name: 'University Avenue, Waterloo, Ontario', exact: true }).click();
 }
 
-test('a cold area fills automatically and exposes every matching map location', async ({ page }) => {
+test('a cold area fills automatically and exposes every matching map location @smoke', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   let requests = 0, polls = 0;
   const submitted: { searchId: string; lat: number; lng: number }[] = [];
