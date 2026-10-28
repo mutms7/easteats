@@ -17,6 +17,12 @@ describe('normalization and freshness',()=>{
     expect(normalizePlace({...place,location:{lat:91,lng:0}})).toBeNull();
     expect(normalizePlace(null)).toBeNull();
   });
+  it('preserves Google price ranges and structured tiers without guessing',()=>{
+    expect(normalizePlace({...place,price:'$10–20'})?.restaurant.priceText).toBe('$10–20');
+    expect(normalizePlace({...place,price:'Price per person: $20-30'})?.restaurant.priceText).toBe('$20-30');
+    expect(normalizePlace({...place,price:null,priceLevel:3})?.restaurant.priceLevel).toBe(3);
+    expect(normalizePlace({...place,price:'unavailable'})?.restaurant.priceText).toBeNull();
+  });
   it('does not treat missing ratings as zero, and rejects unsafe URLs',()=>{
     const result=normalizePlace({...place,totalScore:null,price:'Unknown',imageUrl:'javascript:alert(1)',website:'data:text/html,x'})!;
     expect(result.restaurant.googleRating).toBeNull();
