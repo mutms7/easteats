@@ -95,7 +95,7 @@ Google OAuth is enabled. The local sign-in route was verified to redirect throug
 
 ## Design
 
-The homepage uses the owner's supplied ramen photo in the existing rounded frame. A silent 28-second motion demo follows the hero, with the requested word swaps, product walkthrough, and account CTA. Sign-in stays visible on the first screen on phones and desktop. The demo supports pause, replay, seeking, and reduced motion, and makes no paid API calls. See [the storyboard and implementation notes](docs/homepage-demo.md).
+The homepage uses the owner's supplied ramen photo in the existing rounded frame. A silent 28-second animation opens automatically above sign-in, with word swaps, a constant-speed italic text pass, five gold stars changing to three and a half, a product walkthrough, and an account CTA. It blends into the page without player chrome. Sign-in stays visible on the first screen on phones and desktop. Keyboard pause/resume and reduced motion remain available, and playback makes no paid API calls. See [the storyboard and implementation notes](docs/homepage-demo.md).
 
 The flow follows the supplied [Claude design](https://claude.ai/artifact/UHeVBpfJD6HdtJVUVkgbnj#page-dcb81aee8d83): login, favorite questionnaire, taste interpretation, location, list/map discovery, saved places, and restaurant details. The updated visual direction follows the user's DoorDash reference: clean geometric Plus Jakarta Sans, one vibrant flame-red accent, white surfaces, rounded controls, and real food photography. The font is bundled locally with its license. See [the research and applied design choices](docs/design-research.md) and [photo credits](public/images/credits.md). Restaurant photos come from their own source records, with an explicit missing-photo state.
 
