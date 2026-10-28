@@ -32,7 +32,41 @@ export function parseDraft(raw: string | null): Favorite[] | null {
     return value as Favorite[];
   } catch { return null; }
 }
-export function priceLabel(price: number | null): string { return price ? '$'.repeat(price) : 'Price unknown'; }
+export function priceLabel(price: number | null, priceText?: string | null): string { return priceText || (price ? '
+export function distanceLabel(km: number): string { return `${(km * 0.621371).toFixed(1)} mi`; }
+export function safeExternalUrl(value: string | null): string | undefined {
+  if (!value) return undefined;
+  try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.toString() : undefined; } catch { return undefined; }
+}
+export function fitLabel(item: RankedRestaurant): string {
+  if (item.confidence < 0.35) return 'Still getting to know this spot';
+  return item.score >= 65 ? 'Strong fit' : 'Worth exploring';
+}
+
+/** Browse stays stable; an explicit search immediately follows source relevance. */
+export function mergeDiscoveryResults(current: DiscoverResponse | null, incoming: DiscoverResponse, preferIncomingOrder = false): { applied: DiscoverResponse; pending: DiscoverResponse | null } {
+  if (!current?.items.length) return { applied: incoming, pending: null };
+  const currentIds = new Set(current.items.map(item => item.restaurant.id));
+  const incomingById = new Map(incoming.items.map(item => [item.restaurant.id, item]));
+  if (preferIncomingOrder) {
+    const missing = incoming.job?.status === 'succeeded' ? [] : current.items.filter(item => !incomingById.has(item.restaurant.id));
+    return { applied: { ...incoming, items: [...incoming.items, ...missing] }, pending: null };
+  }
+  const existingOrder = current.items.filter(item => incomingById.has(item.restaurant.id)).map(item => item.restaurant.id);
+  const rankedExistingOrder = incoming.items.filter(item => currentIds.has(item.restaurant.id)).map(item => item.restaurant.id);
+  const orderChanged = existingOrder.some((id, index) => id !== rankedExistingOrder[index]);
+  // Partial pages must not erase cached places. A completed source snapshot is
+  // authoritative, so removed, closed, or no-longer-matching places leave now.
+  const retained = incoming.job?.status === 'succeeded'
+    ? current.items.filter(item => incomingById.has(item.restaurant.id))
+    : current.items;
+  const items = [
+    ...retained.map(item => incomingById.get(item.restaurant.id) ?? item),
+    ...incoming.items.filter(item => !currentIds.has(item.restaurant.id)),
+  ];
+  return { applied: { ...incoming, items }, pending: orderChanged ? incoming : null };
+}
+.repeat(price) : 'See menu for prices'); }
 export function distanceLabel(km: number): string { return `${(km * 0.621371).toFixed(1)} mi`; }
 export function safeExternalUrl(value: string | null): string | undefined {
   if (!value) return undefined;
