@@ -5,7 +5,7 @@ The homepage uses the owner's supplied 886 × 886 ramen photo at `public/images/
 ## Storyboard
 
 1. **best eats? → east eats.** A masked slide replaces the opening phrase with the brand. The movement accelerates and settles rather than moving at a constant speed.
-2. **the best east asian restaurants / DON'T HAVE / the best reviews.** The black words **the best** keep the same anchor. Five gold stars above them change to three and a half. The black restaurant phrase slides out and **reviews** replaces it. Oversized, italic red **DON'T HAVE** passes from right to left at a constant speed, without scaling or stopping. The sequence uses the owner's exact wording.
+2. **the best east asian restaurants / DON'T HAVE / the best reviews.** The black words **the best** keep the same anchor. Five gold stars above them change to three and a half. The black restaurant phrase slides out and **reviews** replaces it. Oversized, italic red **DON'T HAVE** passes quickly from right to left at a constant speed, without scaling or stopping. The star reduction and change to **reviews** begin later, after the sweep is nearly finished. The sequence uses the owner's exact wording.
 3. **Start with a favorite.** An illustrative product screen shows choosing a favorite restaurant and explaining what makes it worth returning to.
 4. **Make it your taste.** Preference details show how dishes, flavors, and priorities shape the recommendations.
 5. **Find your next spot.** A nearby search, restaurant list, and map demonstrate the discovery flow.
@@ -13,7 +13,7 @@ The homepage uses the owner's supplied 886 × 886 ramen photo at `public/images/
 
 ## Playback and accessibility
 
-This is a silent in-page motion piece. It starts automatically when the homepage opens and finishes on the account CTA. There are no visible play, replay, progress, duration, transcript, or demo labels. It pauses when the browser tab is hidden. Keyboard users can focus the animation and press Escape to pause or Enter to resume. Reduced-motion preferences receive the static final CTA.
+This is a silent in-page motion piece. It starts automatically when the homepage opens and finishes on the account CTA. There are no persistent player controls, progress bars, or duration labels. Clicking or focusing the animation does not pause it. It pauses when the browser tab is hidden; keyboard users can press Escape to pause or Enter to resume. At the end, a **Replay demo** button restarts the animation from the beginning. Reduced-motion preferences receive the static final CTA without playback.
 
 The animation replaces the static hero headline, directly above Google sign-in. Its transparent background has no border or rounded player frame, so it merges into the page. Larger text gives each scene more emphasis. The animation and Google sign-in fit on the initial phone screen. The existing Plus Jakarta Sans font, white surfaces, dark text, and flame-red accent remain consistent with the app; gold identifies the star illustration.
 
