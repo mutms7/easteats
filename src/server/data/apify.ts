@@ -9,13 +9,18 @@ export function buildActorInput(input: ScrapeInput): Record<string, unknown> {
   }
   const query = input.query?.trim() || (input.mode === 'fusion' ? 'East Asian fusion restaurant' : 'East Asian restaurant');
   if (query.length > 200) throw new Error('Search query is too long');
-  if (input.city?.trim()) return { ...common, searchStringsArray: [query], locationQuery: input.city.trim().slice(0, 150) };
+  // Broad regional discovery uses multiple focused Google Maps searches.
+  // An explicit dish or restaurant query remains a single focused search.
+  const terms = input.query?.trim() ? [query] : input.mode === 'fusion'
+    ? ['East Asian fusion restaurant', 'Korean fusion restaurant', 'Japanese fusion restaurant']
+    : ['Chinese restaurant', 'Japanese restaurant', 'Korean restaurant', 'Vietnamese restaurant', 'Thai restaurant', 'East Asian fusion restaurant'];
+  if (input.city?.trim()) return { ...common, searchStringsArray: terms, locationQuery: input.city.trim().slice(0, 150) };
   if (input.query?.trim() && input.lat === undefined && input.lng === undefined) return { ...common, searchStringsArray: [query] };
   if (!Number.isFinite(input.lat) || !Number.isFinite(input.lng) || Math.abs(input.lat!) > 90 || Math.abs(input.lng!) > 180) throw new Error('A city or valid coordinates are required');
   const lat = input.lat!, lng = input.lng!, radius = Math.max(.5, Math.min(50, input.radiusKm ?? 5));
   const dLat = radius / 111.32, dLng = radius / (111.32 * Math.max(.01, Math.cos(lat * Math.PI / 180)));
   const left = Math.max(-180, lng - dLng), right = Math.min(180, lng + dLng), bottom = Math.max(-90, lat - dLat), top = Math.min(90, lat + dLat);
-  return { ...common, searchStringsArray: [query], customGeolocation: { type: 'Polygon', coordinates: [[[left,bottom],[right,bottom],[right,top],[left,top],[left,bottom]]] } };
+  return { ...common, searchStringsArray: terms, customGeolocation: { type: 'Polygon', coordinates: [[[left,bottom],[right,bottom],[right,top],[left,top],[left,bottom]]] } };
 }
 
 export class ApifyClient {
