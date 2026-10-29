@@ -18,10 +18,18 @@ export const locationSchema = z.object({ lat: z.number().min(-90).max(90), lng: 
 export type Location = z.infer<typeof locationSchema>;
 export const savedLocationSchema = locationSchema.extend({ label: z.string().trim().min(1).max(700) }).strict();
 export type SavedLocation = z.infer<typeof savedLocationSchema>;
-export const discoverInputSchema = locationSchema.extend({ searchId: z.string().uuid().optional(), radiusKm: z.number().min(0.5).max(50).default(5), mode: z.enum(['for-you','fusion']).default('for-you'), query: z.string().max(150).default(''), cuisine: z.string().max(80).default(''), foodType: z.string().max(60).optional(), maxPrice: z.number().int().min(1).max(4).optional() });
+export const discoverInputSchema = locationSchema.extend({ searchId: z.string().uuid().optional(), savedSearchId: z.string().uuid().optional(), areaLabel: z.string().trim().max(700).optional(), radiusKm: z.number().min(0.5).max(50).default(5), mode: z.enum(['for-you','fusion']).default('for-you'), query: z.string().max(150).default(''), cuisine: z.string().max(80).default(''), foodType: z.string().max(60).optional(), maxPrice: z.number().int().min(1).max(4).optional() });
 export type DiscoverInput = z.infer<typeof discoverInputSchema>;
-export interface RankedRestaurant { restaurant: Restaurant; score: number; distanceKm: number; explanation: string; confidence: number; matchReasons?: string[]; scoreBreakdown?: { food: number|null; value: number|null; service: number|null; atmosphere: number|null; taste: number|null } }
+export interface RankedRestaurant { restaurant: Restaurant; score: number; baseScore?: number; feedbackAdjustment?: number; distanceKm: number; explanation: string; confidence: number; matchReasons?: string[]; scoreBreakdown?: { food: number|null; value: number|null; service: number|null; atmosphere: number|null; taste: number|null } }
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed' | 'budget_limited' | 'uncertain';
 export interface RefreshJob { id: string; status: JobState; kind: 'discovery' | 'details' | 'favorite-search'; createdAt: string; error?: string }
 export interface Review { id: string; text: string; stars: number | null; publishedAt: string | null; sourceUrl: string }
-export interface DiscoverResponse { items: RankedRestaurant[]; job: RefreshJob | null; enrichmentJob?: RefreshJob | null; searchPhase?: 'places' | 'reviews' | 'complete'; profileVersion: number; dataMode: 'live' | 'demo'; refreshing: boolean; warning?: string }
+export interface DiscoverResponse { items: RankedRestaurant[]; job: RefreshJob | null; enrichmentJob?: RefreshJob | null; searchPhase?: 'places' | 'reviews' | 'complete'; profileVersion: number; dataMode: 'live' | 'demo'; refreshing: boolean; warning?: string; savedSearch?: SavedSearchSummary }
+export interface SavedSearchSummary { id: string; title: string; areaLabel: string; resultCount: number; createdAt: string; updatedAt: string; lastOpenedAt: string }
+export interface SavedSearch extends SavedSearchSummary { input: DiscoverInput; items: RankedRestaurant[]; warning?: string }
+export const feedbackSentimentSchema = z.enum(['like','dislike','neutral']);
+export type FeedbackSentiment = z.infer<typeof feedbackSentimentSchema>;
+export const feedbackReasonSchema = z.enum(['food','value','service','atmosphere','overall']);
+export type FeedbackReason = z.infer<typeof feedbackReasonSchema>;
+export interface FeedbackItem { restaurantId: string; sentiment: FeedbackSentiment; reason?: FeedbackReason|null; note?: string|null; updatedAt: string; restaurant: Restaurant }
+export interface MealCheckin { restaurantId: string; restaurant: Restaurant; searchId: string|null; chosenAt: string }

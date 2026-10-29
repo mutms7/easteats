@@ -5,11 +5,13 @@ import FieldGuideHero from './FieldGuideHero';
 import LocationSearch from './LocationSearch';
 import HomeAddress from './HomeAddress';
 import MatchInsights from './MatchInsights';
+import SearchHistory from './SearchHistory';
+import RestaurantActions from './RestaurantActions';
 import { classifyRestaurant, CUISINES, FOOD_TYPES } from '@/lib/food-taxonomy';
 import HomepageDemo from './HomepageDemo';
 import SiteFooter from './SiteFooter';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import type { DiscoverInput, DiscoverResponse, Favorite, Location, RankedRestaurant, RefreshJob, Restaurant, SavedLocation, TasteInput, TasteProfile } from '@/lib/contracts';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import type { DiscoverInput, DiscoverResponse, Favorite, FeedbackItem, FeedbackSentiment, Location, MealCheckin, RankedRestaurant, RefreshJob, Restaurant, SavedLocation, SavedSearch, SavedSearchSummary, TasteInput, TasteProfile } from '@/lib/contracts';
 import { parseTasteGoal, TASTE_GOAL_OPTIONS, type TasteGoal } from '@/lib/taste-goals';
 import { authNotice, distanceLabel, favoriteFromRestaurant, goalDraftKey, mergeDiscoveryResults, parseDraft, parseGoalDraft, priceLabel, REASONS, safeExternalUrl, toggleReason, validFavorites } from './ui-helpers';
 
@@ -54,7 +56,12 @@ function PriceInfo({ restaurant }: { restaurant: Restaurant }) {
   return source ? <a href={source} target="_blank" rel="noreferrer">Check prices ↗</a> : <>{value}</>;
 }
 
-function Details({ item, saved, saving, onSave, onClose }: { item: RankedRestaurant; saved: boolean; saving: boolean; onSave: () => void; onClose: () => void }) {
+type Filters = { radiusKm: number; mode: 'for-you' | 'fusion'; cuisine: string; foodType: string; query: string; maxPrice: number };
+function SearchFilters({ filters, onChange }: { filters: Filters; onChange: (patch: Partial<Filters>) => void }) {
+  return <div className="filters"><label>Distance<select value={filters.radiusKm} onChange={event => onChange({ radiusKm: Number(event.target.value) })}><option value="2">About 1 mile</option><option value="5">About 3 miles</option><option value="15">About 9 miles</option><option value="50">About 30 miles</option></select></label><label>Price<select value={filters.maxPrice} onChange={event => onChange({ maxPrice: Number(event.target.value) })}><option value="4">Any price</option><option value="1">$</option><option value="2">Up to $$</option><option value="3">Up to $$$</option></select></label><label>Cuisine<select value={filters.cuisine} onChange={event => onChange({ cuisine: event.target.value })}><option value="">All cuisines</option>{CUISINES.map(cuisine => <option value={cuisine} key={cuisine}>{cuisine}</option>)}</select></label><label>Food type<select value={filters.foodType} onChange={event => onChange({ foodType: event.target.value })}><option value="">Any food</option>{FOOD_TYPES.map(food => <option value={food.id} key={food.id}>{food.label}</option>)}</select></label></div>;
+}
+
+function Details({ item, actions, onClose }: { item: RankedRestaurant; actions: ReactNode; onClose: () => void }) {
   const dialog = useRef<HTMLDivElement>(null);
   const r = item.restaurant;
   useEffect(() => {
@@ -77,7 +84,7 @@ function Details({ item, saved, saving, onSave, onClose }: { item: RankedRestaur
   return <div className="dialog-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose(); }}><div className="detail-dialog" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabIndex={-1} ref={dialog}>
     <button className="button close-dialog" onClick={onClose} aria-label="Close restaurant details">Close ×</button>
     <RestaurantPhoto restaurant={r} /><div className="detail-content"><p className="eyebrow">{r.cuisines.join(' · ') || 'Cuisine details pending'} · {r.city}</p><h2 id="detail-title">{r.name}</h2><p>{r.address}</p><p className="small">Pricing: <PriceInfo restaurant={r} /></p>
-    <div className="inline-actions"><button className="button primary" onClick={onSave} aria-pressed={saved} disabled={saving}>{saving ? 'Saving…' : saved ? 'Saved' : 'Save this place'}</button><a className="button" href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.address)}&destination_place_id=${encodeURIComponent(r.id)}`} target="_blank" rel="noreferrer">Get directions ↗</a></div>
+    {actions}<div className="inline-actions"><a className="button" href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.address)}&destination_place_id=${encodeURIComponent(r.id)}`} target="_blank" rel="noreferrer">Get directions ↗</a></div>
     <section className="field-note"><MatchInsights item={item} expanded /></section>
     <div className="details-grid"><section><h3>Dishes to explore</h3><p>{r.features?.dishes.length ? r.features.dishes.join(', ') : 'We do not have enough dish information yet.'}</p></section><section><h3>Listed hours</h3>{r.hours.length ? <ul>{r.hours.map((hour, index) => <li key={index}>{hour}</li>)}</ul> : <p>Hours are unavailable. Check with the restaurant before visiting.</p>}<p className="small">Details checked {new Date(r.fetchedAt).toLocaleDateString()}. Hours can change.</p></section></div>
     <section><h3>What the reviews say</h3>{r.features?.evidence.length ? r.features.evidence.map(evidence => <blockquote key={`${evidence.id}-${evidence.aspect}`} className={evidence.aspect === 'cleanliness' ? 'concern' : ''}><span className="eyebrow">{evidence.aspect === 'cleanliness' ? 'Reported cleanliness concern' : evidence.aspect}</span><p>{evidence.text}</p>{safeExternalUrl(evidence.sourceUrl) && <a href={safeExternalUrl(evidence.sourceUrl)} target="_blank" rel="noreferrer">Review source ↗</a>}</blockquote>) : <p>There is not enough review evidence to explain this place yet.</p>}</section>
@@ -121,6 +128,8 @@ export default function EastEatsApp() {
   const [discoveryJob, setDiscoveryJob] = useState<DiscoveryJob | null>(null);
   const [discoveryPhase, setDiscoveryPhase] = useState<'idle' | 'places' | 'reviews' | 'complete' | 'stopped'>('idle');
   const appliedResults = useRef<DiscoverResponse | null>(null);
+  const displayedLocation = useRef<Location | null>(null);
+  const displayedInput = useRef<DiscoverInput | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState<Restaurant[]>([]);
   const [savingIds, setSavingIds] = useState<string[]>([]);
@@ -128,6 +137,58 @@ export default function EastEatsApp() {
   const [selected, setSelected] = useState<RankedRestaurant | null>(null);
   const mounted = useRef(true);
   const bootVersion = useRef(0);
+
+  const [searchHistory, setSearchHistory] = useState<SavedSearchSummary[]>([]);
+  const [currentSearch, setCurrentSearch] = useState<SavedSearchSummary | null>(null);
+  const currentSearchId = useRef<string | null>(null);
+  const snapshotVersion = useRef(0);
+  const historyRequest = useRef<AbortController | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
+  const [feedbackIds, setFeedbackIds] = useState<string[]>([]);
+  const feedbackPending = useRef(new Set<string>());
+  const feedbackReadVersion = useRef(0);
+  const [mealIds, setMealIds] = useState<string[]>([]);
+  const mealPending = useRef(new Set<string>());
+  const [pendingMeal, setPendingMeal] = useState<MealCheckin | null>(null);
+  const [completedRun, setCompletedRun] = useState<{ searchId: string; account: number; context: number } | null>(null);
+
+  function rememberSearch(summary: SavedSearchSummary) {
+    setSearchHistory(items => [summary, ...items.filter(item => item.id !== summary.id)]);
+  }
+  function stopDiscovery() {
+    activeDiscovery.current = null; setDiscoveryIntent(null); setDiscoveryJob(null); setPendingResults(null); setDiscoveryPhase('idle');
+    setBusy(value => value === 'discover' ? '' : value);
+  }
+  function applySnapshot(search: SavedSearch, dataMode: 'live' | 'demo' = 'live') {
+    const input = search.input; displayedInput.current = input;
+    displayedLocation.current = { lat: input.lat, lng: input.lng };
+    currentSearchId.current = search.id; setCurrentSearch(search); rememberSearch(search);
+    setLocation({ lat: input.lat, lng: input.lng }); setAreaLabel(search.areaLabel); locationChoice.current = 'manual';
+    setFilters({ radiusKm: input.radiusKm, mode: input.mode, cuisine: input.cuisine, foodType: input.foodType ?? '', query: input.query, maxPrice: input.maxPrice ?? 4 }); setQueryDraft(input.query);
+    const snapshot: DiscoverResponse = { items: search.items, job: null, refreshing: false, profileVersion: 0, dataMode };
+    appliedResults.current = snapshot; setResults(snapshot); setDiscoveryPhase('complete'); setSelected(null); setStage('explore');
+    if (search.warning) setNotice(search.warning);
+  }
+  async function openSearch(id: string) {
+    const version = ++snapshotVersion.current; const account = bootVersion.current;
+    historyRequest.current?.abort(); const controller = new AbortController(); historyRequest.current = controller;
+    stopDiscovery(); setSelected(null); setBusy('history'); setError('');
+    try {
+      const data = await request<{ search: SavedSearch }>(`/api/searches/${encodeURIComponent(id)}`, undefined, undefined, controller.signal);
+      if (controller.signal.aborted || version !== snapshotVersion.current || account !== bootVersion.current) return;
+      applySnapshot(data.search, session?.dataMode ?? 'live');
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('.current-search-title')?.focus({ preventScroll: true }));
+    } catch (e) { if (!controller.signal.aborted && version === snapshotVersion.current) setError(e instanceof Error ? e.message : 'Could not open that saved search.'); }
+    finally { if (!controller.signal.aborted && version === snapshotVersion.current) setBusy(''); }
+  }
+  function newSearch() {
+    snapshotVersion.current += 1; historyRequest.current?.abort(); stopDiscovery();
+    currentSearchId.current = null; setCurrentSearch(null); setResults(null); appliedResults.current = null; setSelected(null);
+    setFilters({ radiusKm: 5, mode: 'for-you', cuisine: '', foodType: '', query: '', maxPrice: 4 }); setQueryDraft('');
+    displayedInput.current = null;
+    setLocation(homeAddress); setAreaLabel(homeAddress?.label ?? 'Nearby'); locationChoice.current = homeAddress ? 'home' : null;
+    setError(''); setNotice(''); setBusy(''); setStage('location');
+  }
 
   const boot = useCallback(async () => {
     const version = ++bootVersion.current;
@@ -149,9 +210,25 @@ export default function EastEatsApp() {
       const home = data.user ? data.homeAddress ?? null : null;
       setHomeAddress(home); locationChoice.current = home ? 'home' : null;
       setLocation(home); setAreaLabel(home?.label ?? 'Nearby');
-      if (data.user && data.profile && home) { beginDiscovery(home); setStage('explore'); }
-      else setStage(!data.user ? 'login' : data.profile ? 'location' : 'questionnaire');
-      if (data.user) request<{ items: Restaurant[] }>('/api/saved').then(saved => { if (mounted.current && version === bootVersion.current) setSavedPlaces(saved.items); }).catch(() => {});
+      setCurrentSearch(null); currentSearchId.current = null; setSearchHistory([]); setFeedback([]); setPendingMeal(null);
+      if (data.user) {
+        request<{ items: Restaurant[] }>('/api/saved').then(saved => { if (mounted.current && version === bootVersion.current) setSavedPlaces(saved.items); }).catch(() => {});
+        const feedbackVersion = ++feedbackReadVersion.current;
+        request<{ items: FeedbackItem[] }>('/api/feedback').then(value => { if (mounted.current && version === bootVersion.current && feedbackVersion === feedbackReadVersion.current) setFeedback(value.items); }).catch(() => {});
+        request<{ pendingMeal: MealCheckin | null }>('/api/meal').then(value => { if (mounted.current && version === bootVersion.current) setPendingMeal(value.pendingMeal); }).catch(() => {});
+      }
+      if (data.user && data.profile) {
+        try {
+          const history = await request<{ items: SavedSearchSummary[] }>('/api/searches');
+          if (!mounted.current || version !== bootVersion.current) return;
+          setSearchHistory(history.items);
+          if (history.items.length) {
+            const saved = await request<{ search: SavedSearch }>(`/api/searches/${encodeURIComponent(history.items[0].id)}`);
+            if (!mounted.current || version !== bootVersion.current) return;
+            stopDiscovery(); applySnapshot(saved.search, data.dataMode);
+          } else setStage('location');
+        } catch (e) { if (mounted.current && version === bootVersion.current) { setStage('location'); setNotice(e instanceof Error ? e.message : 'Saved searches could not load. You can start a new search.'); } }
+      } else setStage(data.user ? 'questionnaire' : 'login');
     } catch (e) { if (mounted.current && version === bootVersion.current) { setError(e instanceof Error ? e.message : 'Could not load the app.'); setStage('login'); } }
   }, []);
   useEffect(() => {
@@ -159,7 +236,7 @@ export default function EastEatsApp() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
     const signInNotice = authNotice(window.location.search);
     if (signInNotice) setNotice(signInNotice);
-    return () => { mounted.current = false; bootVersion.current += 1; favoriteRequest.current?.abort(); };
+    return () => { mounted.current = false; bootVersion.current += 1; favoriteRequest.current?.abort(); historyRequest.current?.abort(); };
   }, [boot]);
   useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(`east-eats:taste:${session.user.id}`, JSON.stringify(favorites)); } catch { /* A private browsing storage limit must not block the questionnaire. */ } } }, [favorites, draftReady, session?.user]);
   useEffect(() => { if (draftReady && session?.user) { try { localStorage.setItem(goalDraftKey(session.user.id), JSON.stringify(goal)); } catch { /* A preference can still be saved to the account without local storage. */ } } }, [goal, draftReady, session?.user]);
@@ -170,6 +247,7 @@ export default function EastEatsApp() {
   const discover = useCallback(async (intent: DiscoveryIntent, offerUpdate = false, signal?: AbortSignal) => {
     const data = await request<DiscoveryPayload>('/api/discover', intent.input, undefined, signal);
     if (signal?.aborted || activeDiscovery.current?.id !== intent.id) return;
+    if (data.savedSearch) { currentSearchId.current = data.savedSearch.id; setCurrentSearch(data.savedSearch); rememberSearch(data.savedSearch); }
     // Every new place reaches both views. Browse stays stable; explicit food,
     // cuisine, and text searches immediately follow fresh relevance tiers.
     const preferRelevance = Boolean(intent.input.query.trim() || intent.input.foodType || intent.input.cuisine);
@@ -182,7 +260,9 @@ export default function EastEatsApp() {
       const phase = businessPending ? 'places' : 'reviews';
       setDiscoveryPhase(phase); setDiscoveryJob({ job: nextJob, intent, phase });
     } else {
-      setDiscoveryJob(null);
+      const searchId = data.savedSearch?.id ?? currentSearchId.current;
+      if (searchId) setCompletedRun({ searchId, account: bootVersion.current, context: snapshotVersion.current });
+      setDiscoveryJob(null); activeDiscovery.current = null; setDiscoveryIntent(null); setBusy(current => current === 'discover' ? '' : current);
       const failed = (data.job && ['failed', 'uncertain', 'budget_limited'].includes(data.job.status))
         || (data.dataMode === 'live' && !data.job && Boolean(data.warning));
       setDiscoveryPhase(failed ? 'stopped' : 'complete');
@@ -191,6 +271,21 @@ export default function EastEatsApp() {
     if (data.job?.status === 'budget_limited') setNotice('We are showing saved results while live searches are paused.');
     if (data.warning) setNotice(data.warning);
   }, []);
+  useEffect(() => {
+    if (!completedRun) return;
+    const controller = new AbortController();
+    const valid = () => mounted.current && completedRun.account === bootVersion.current && completedRun.context === snapshotVersion.current && completedRun.searchId === currentSearchId.current;
+    const timer = setTimeout(() => {
+      if (!valid()) return;
+      request<{ items: SavedSearchSummary[] }>('/api/searches', undefined, undefined, controller.signal).then(data => {
+        if (controller.signal.aborted || !valid()) return;
+        setSearchHistory(data.items);
+        const summary = data.items.find(item => item.id === completedRun.searchId);
+        if (summary) setCurrentSearch(summary);
+      }).catch(() => {});
+    }, 10_000);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [completedRun]);
   useEffect(() => {
     if (stage !== 'explore' || !discoveryIntent || !profile) return;
     const controller = new AbortController();
@@ -201,7 +296,7 @@ export default function EastEatsApp() {
       }
     }).finally(() => { if (!controller.signal.aborted && activeDiscovery.current?.id === discoveryIntent.id) setBusy(''); });
     return () => controller.abort();
-  }, [stage, discover, discoveryIntent, profile?.version]);
+  }, [stage, discover, discoveryIntent]);
 
   const searchFavorites = useCallback(async () => {
     if (!searchName.trim()) return;
@@ -316,15 +411,26 @@ export default function EastEatsApp() {
       setProfile(data.profile); setPersonalized(data.personalized); setNotice(data.warning ?? ''); setCorrection(''); setStage('interpretation');
     } catch (e) { setError(e instanceof Error ? e.message : 'Your answers are still here. Please try again.'); } finally { setBusy(''); }
   }
-  function beginDiscovery(value: Location, nextFilters = filters) {
-    const id = crypto.randomUUID();
-    const intent: DiscoveryIntent = { id, input: { ...value, ...nextFilters, searchId: id }, startedAt: Date.now() };
+  function beginDiscovery(value: Location, nextFilters = filters, options: { savedSearchId?: string; areaLabel?: string } = {}) {
+    snapshotVersion.current += 1; historyRequest.current?.abort();
+    const id = crypto.randomUUID(); const label = options.areaLabel ?? areaLabel;
+    const intent: DiscoveryIntent = { id, input: { lat: value.lat, lng: value.lng, ...nextFilters, searchId: id, areaLabel: label, ...(options.savedSearchId ? { savedSearchId: options.savedSearchId } : {}) }, startedAt: Date.now() };
+    if (!options.savedSearchId) { currentSearchId.current = null; setCurrentSearch(null); }
+    displayedInput.current = intent.input; displayedLocation.current = { lat: value.lat, lng: value.lng };
     activeDiscovery.current = intent; setDiscoveryIntent(intent); setDiscoveryJob(null); setDiscoveryPhase('places');
-    appliedResults.current = null; setResults(null); setPendingResults(null); setNotice('');
+    appliedResults.current = null; setResults(null); setPendingResults(null); setNotice(''); setStage('explore');
   }
-  function updateFilters(patch: Partial<typeof filters>) {
-    const next = { ...filters, ...patch }; setFilters(next);
-    if (location) beginDiscovery(location, next);
+  function updateFilters(patch: Partial<typeof filters>) { setFilters(current => ({ ...current, ...patch })); }
+  function runAdjustedSearch(event: FormEvent) {
+    event.preventDefault();
+    if (!location) return;
+    const next = { ...filters, query: queryDraft.trim() }; setFilters(next); beginDiscovery(location, next);
+  }
+  function refreshCurrentSearch() {
+    const input = displayedInput.current; if (!input) return;
+    const applied: Filters = { radiusKm: input.radiusKm, mode: input.mode, cuisine: input.cuisine, foodType: input.foodType ?? '', query: input.query, maxPrice: input.maxPrice ?? 4 };
+    setFilters(applied); setQueryDraft(input.query);
+    beginDiscovery(input, applied, { savedSearchId: currentSearchId.current ?? undefined, areaLabel: input.areaLabel ?? areaLabel });
   }
   function updateHome(value: SavedLocation | null) {
     setHomeAddress(value);
@@ -333,13 +439,11 @@ export default function EastEatsApp() {
       locationChoice.current = value ? 'home' : null; setLocation(value); setAreaLabel(value?.label ?? 'Nearby');
     }
   }
-  function returnToExplore() {
-    if (!location) { setStage('location'); return; }
-    const active = activeDiscovery.current?.input;
-    if (!active || active.lat !== location.lat || active.lng !== location.lng) beginDiscovery(location);
-    setStage('explore');
+  function returnToExplore() { const point = displayedLocation.current; const changed = location && point && (location.lat !== point.lat || location.lng !== point.lng); setStage(appliedResults.current && !changed ? 'explore' : 'location'); }
+  function prepareLocation(value: Location, label: string, source: 'manual' | 'gps' | 'home' = 'manual') {
+    locationOperation.current += 1; locationChoice.current = source; setBusy(current => current === 'location' ? '' : current); setLocation(value); setAreaLabel(label); setError('');
   }
-  function chooseLocation(value: Location, label: string, source: 'manual' | 'gps' | 'home' = 'manual') { locationOperation.current += 1; locationChoice.current = source; setBusy(current => current === 'location' ? '' : current); setLocation(value); setAreaLabel(label); setError(''); beginDiscovery(value); setStage('explore'); }
+  function chooseLocation(value: Location, label: string) { prepareLocation(value, label); const input = displayedInput.current; const applied = input ? { radiusKm: input.radiusKm, mode: input.mode, cuisine: input.cuisine, foodType: input.foodType ?? '', query: input.query, maxPrice: input.maxPrice ?? 4 } : filters; beginDiscovery(value, applied, { areaLabel: label }); }
   function locate() {
     setError('');
     if (!navigator.geolocation) { setError('This browser cannot find your location. Enter an address or area below.'); return; }
@@ -352,7 +456,7 @@ export default function EastEatsApp() {
       const point = { lat: position.coords.latitude, lng: position.coords.longitude };
       setBusy('');
       if (fromStage === 'questionnaire') { locationChoice.current = 'gps'; setLocation(point); setAreaLabel('Near you'); setNotice('Current location is ready for your next search. Your saved home has not changed.'); }
-      else chooseLocation(point, 'Near you', 'gps');
+      else prepareLocation(point, 'Near you', 'gps');
     }, () => { if (!isCurrent()) return; setBusy(''); setError('We could not use your location. Enter an address or area below.'); }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
   }
   async function toggleSaved(restaurant: Restaurant) {
@@ -362,21 +466,62 @@ export default function EastEatsApp() {
     const isSaved = savedPlaces.some(place => place.id === restaurant.id);
     try { await request(`/api/saved/${encodeURIComponent(restaurant.id)}`, undefined, isSaved ? 'DELETE' : 'PUT'); setSavedPlaces(places => isSaved ? places.filter(place => place.id !== restaurant.id) : places.some(place => place.id === restaurant.id) ? places : [...places, restaurant]); setNotice(isSaved ? `${restaurant.name} removed from Saved.` : `${restaurant.name} saved.`); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save this place.'); } finally { savingRef.current.delete(restaurant.id); setSavingIds([...savingRef.current]); }
   }
+  async function saveFeedback(restaurantId: string, sentiment: FeedbackSentiment | null, answerMeal = false) {
+    if (feedbackPending.current.size) return;
+    feedbackReadVersion.current += 1;
+    feedbackPending.current.add(restaurantId); setFeedbackIds([...feedbackPending.current]);
+    const account = bootVersion.current; const context = snapshotVersion.current; const searchId = currentSearchId.current;
+    setError(''); let opinionSaved = false;
+    try {
+      const data = await request<{ items: FeedbackItem[] }>('/api/feedback', { restaurantId, sentiment, ...(answerMeal ? { answerMeal: true } : {}) }, 'PUT');
+      if (!mounted.current || account !== bootVersion.current) return;
+      opinionSaved = true; setFeedback(data.items);
+      if (answerMeal) setPendingMeal(null);
+      setNotice(answerMeal ? 'Thanks. Your meal feedback is saved.' : sentiment === null ? 'Opinion removed.' : sentiment === 'like' ? 'Added to Liked places.' : sentiment === 'dislike' ? 'Dislike saved.' : 'Neutral feedback saved.');
+      if (searchId) {
+        const saved = await request<{ search: SavedSearch }>(`/api/searches/${encodeURIComponent(searchId)}`);
+        if (!mounted.current || account !== bootVersion.current || context !== snapshotVersion.current || searchId !== currentSearchId.current) return;
+        const snapshot: DiscoverResponse = { items: saved.search.items, job: null, refreshing: false, profileVersion: profile?.version ?? 0, dataMode: session?.dataMode ?? 'live' };
+        appliedResults.current = snapshot; setResults(snapshot); setPendingResults(null); setCurrentSearch(saved.search); rememberSearch(saved.search);
+        setSelected(item => item ? saved.search.items.find(next => next.restaurant.id === item.restaurant.id) ?? item : null);
+      }
+    } catch (e) { if (mounted.current && account === bootVersion.current) { if (opinionSaved) setNotice('Your opinion is saved. The list could not update yet; open this search again to retry.'); else setError(e instanceof Error ? e.message : 'Your opinion could not be saved. Please retry.'); } }
+    finally { feedbackPending.current.delete(restaurantId); if (mounted.current && account === bootVersion.current) setFeedbackIds([...feedbackPending.current]); }
+  }
+  async function chooseMeal(restaurant: Restaurant) {
+    if (mealPending.current.has(restaurant.id)) return;
+    mealPending.current.add(restaurant.id); setMealIds([...mealPending.current]); const account = bootVersion.current;
+    try {
+      await request('/api/meal', { restaurantId: restaurant.id, ...(currentSearchId.current ? { searchId: currentSearchId.current } : {}) }, 'PUT');
+      if (mounted.current && account === bootVersion.current) setNotice(`You picked ${restaurant.name}. We will ask how it was on your next visit.`);
+    } catch (e) { if (mounted.current && account === bootVersion.current) setError(e instanceof Error ? e.message : 'Your choice could not be saved. Please retry.'); }
+    finally { mealPending.current.delete(restaurant.id); if (mounted.current && account === bootVersion.current) setMealIds([...mealPending.current]); }
+  }
+  function actionsFor(restaurant: Restaurant) {
+    return <RestaurantActions name={restaurant.name} sentiment={feedback.find(item => item.restaurantId === restaurant.id)?.sentiment} saved={savedPlaces.some(item => item.id === restaurant.id)} feedbackBusy={feedbackIds.length > 0} saveBusy={savingIds.includes(restaurant.id)} mealBusy={mealIds.includes(restaurant.id)} onFeedback={sentiment => { void saveFeedback(restaurant.id, sentiment); }} onSave={() => { void toggleSaved(restaurant); }} onMeal={() => { void chooseMeal(restaurant); }} />;
+  }
+  function collectionCard(restaurant: Restaurant) {
+    return <article className="saved-card" key={restaurant.id}><RestaurantPhoto restaurant={restaurant} /><div className="card-content"><p className="eyebrow">{restaurant.city}</p><button className="restaurant-title" onClick={() => setSelected({ restaurant, score: 0, distanceKm: 0, confidence: restaurant.features?.confidence ?? 0, explanation: '' })}>{restaurant.name}</button><RestaurantTags restaurant={restaurant} /><p><PriceInfo restaurant={restaurant} /></p><MatchInsights item={{ restaurant, score: 0, distanceKm: 0, confidence: restaurant.features?.confidence ?? 0, explanation: '' }} />{actionsFor(restaurant)}</div></article>;
+  }
   async function logout() {
-    locationOperation.current += 1;
+    locationOperation.current += 1; snapshotVersion.current += 1; historyRequest.current?.abort(); stopDiscovery();
     favoriteSearchId.current += 1; favoriteRequest.current?.abort(); setFavoriteJob(null); setFavoriteSearch(null); setSearchResults(null);
     setBusy('logout'); setError('');
-    try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setGoal('balanced'); setHomeAddress(null); locationChoice.current = null; setDraftReady(false); setResults(null); setSavedPlaces([]); setLocation(null); activeDiscovery.current = null; setDiscoveryIntent(null); setDiscoveryJob(null); setDiscoveryPhase('idle'); appliedResults.current = null; setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
+    try { await request('/auth/logout', {}, 'POST'); setSession(null); setProfile(null); setFavorites([]); setGoal('balanced'); setHomeAddress(null); locationChoice.current = null; setDraftReady(false); setResults(null); setSavedPlaces([]); setFeedback([]); setPendingMeal(null); setSearchHistory([]); setCurrentSearch(null); currentSearchId.current = null; setLocation(null); activeDiscovery.current = null; setDiscoveryIntent(null); setDiscoveryJob(null); setDiscoveryPhase('idle'); appliedResults.current = null; setStage('login'); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Sign-out did not finish.'); } finally { setBusy(''); }
   }
   const closeDetails = useCallback(() => setSelected(null), []);
 
+  const mainNavigation = session?.user && profile && stage !== 'loading' && stage !== 'login' && stage !== 'location' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' ? 'page' : undefined} onClick={returnToExplore}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>;
+
   return <div className="app-shell" data-stage={stage}>
     <a href="#main" className="skip-link">Skip to content</a>
-    <header className="site-header"><a className="wordmark" href="/" aria-label="East Eats home">east eats<span className="wordmark-dot">.</span></a><span className="header-note">find food you’ll love</span>{stage === 'login' && <a className="button header-signin" href="/auth/login" aria-disabled={!session?.configured} onClick={event => { if (!session?.configured) event.preventDefault(); }}>Sign in</a>}{session?.user && <button className="text-button" onClick={logout} disabled={busy === 'logout'}>{busy === 'logout' ? 'Signing out…' : 'Sign out'}</button>}</header>
+    <header className="site-header"><a className="wordmark" href="/" aria-label="East Eats home">east eats<span className="wordmark-dot">.</span></a><span className="header-note">find food you’ll love</span>{stage === 'login' && <a className="button header-signin" href="/auth/login" aria-disabled={!session?.configured} onClick={event => { if (!session?.configured) event.preventDefault(); }}>Sign in</a>}{session?.user && <button className="text-button" onClick={logout} disabled={busy === 'logout'}>{busy === 'logout' ? 'Signing out…' : 'Sign out'}</button>}{mainNavigation}</header>
     {session?.dataMode === 'demo' && session.user && <div className="demo-banner">Demo mode · Fictional restaurants and sample recommendations. No live scraping.</div>}
     <main id="main" className={stage === 'login' ? 'main-login' : stage === 'explore' || stage === 'saved' ? 'main-wide' : 'main-narrow'}>
       {error && <div className="message error" role="alert">{error}<button className="text-button" onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
       {notice && <div className="message" role="status">{notice}<button className="text-button" onClick={() => setNotice('')} aria-label="Dismiss notification">×</button></div>}
+      {session?.user && profile && (stage === 'explore' || stage === 'location') && <SearchHistory items={searchHistory} currentId={currentSearch?.id ?? null} loading={busy === 'history'} onOpen={id => { void openSearch(id); }} onNew={newSearch} />}
+      {session?.user && pendingMeal && <section className="meal-checkin" aria-label="Meal check-in"><h2>How was {pendingMeal.restaurant.name}?</h2><p className="small">You picked this place on an earlier visit.</p><div className="meal-checkin-actions">{(['like', 'neutral', 'dislike'] as const).map(sentiment => <button className="button" key={sentiment} disabled={feedbackIds.length > 0} onClick={() => { void saveFeedback(pendingMeal.restaurantId, sentiment, true); }}>{sentiment === 'like' ? 'Like' : sentiment === 'neutral' ? 'Neutral' : 'Dislike'}</button>)}<button className="text-button" onClick={() => setPendingMeal(null)}>Not yet</button></div></section>}
       {stage === 'loading' && <div className="empty" role="status"><Bowl className="loading-bowl" /><p>Getting the table ready…</p></div>}
       {stage === 'login' && <FieldGuideHero demo={<HomepageDemo configured={Boolean(session?.configured)} />}><a className={`button login-button ${!session?.configured ? 'disabled' : ''}`} href='/auth/login' onClick={event => { if (!session?.configured) event.preventDefault(); }} aria-disabled={!session?.configured}><img src="/google-g.png" width="20" height="20" alt="" aria-hidden="true" />Continue with Google</a>{!session?.configured && <p className="small">Google sign-in is waiting for setup. Your account and recommendations will be available once it’s connected.</p>}{session?.demo && <button className="button" disabled={Boolean(busy)} onClick={async () => { setBusy('demo'); setError(''); try { await request('/api/demo/start', {}); await boot(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not open the demo.'); } finally { setBusy(''); } }}>{busy === 'demo' ? 'Opening demo…' : 'Try the demo'}</button>}{!session && <button className="button" onClick={() => { setStage('loading'); void boot(); }}>Retry connection</button>}</FieldGuideHero>}
 
@@ -390,17 +535,18 @@ export default function EastEatsApp() {
 
       {stage === 'interpretation' && profile && <section><p className="eyebrow">Your taste profile</p><h1>{personalized ? 'Here’s what we’re hearing.' : 'Your answers are saved.'}</h1><p className="taste-goal-summary"><span>Right now:</span><strong>{TASTE_GOAL_OPTIONS.find(option => option.value === goal)?.label}</strong></p><div className="field-note interpretation"><p>{personalized ? profile.interpretation : 'Your priority is applied. We could not finish learning from your favorites yet. You can retry or start exploring.'}</p></div><form onSubmit={submitTaste}><label htmlFor="correction">Anything we missed?</label><textarea id="correction" rows={3} maxLength={1500} value={correction} onChange={event => setCorrection(event.target.value)} placeholder="Actually, I prefer mild food and I’d travel farther for great dumplings." /><div className="inline-actions"><button className="button" disabled={busy === 'taste'}>{busy === 'taste' ? 'Updating…' : personalized ? 'Update my tastes' : 'Retry personalization'}</button><button className="button primary" type="button" onClick={returnToExplore}>Let’s find somewhere</button></div></form><button className="text-button" onClick={() => setStage('questionnaire')}>Edit my favorites</button></section>}
 
-      {stage === 'location' && <section><p className="eyebrow">Let’s look around</p><h1>Where are<br />we eating?</h1><p className="lede">Find food near a street address, campus, neighborhood, or city.</p><button className="button primary" onClick={locate} disabled={busy === 'location'}>{busy === 'location' ? 'Finding your location…' : 'Use my location'}</button><p className="small">Choose your current location, or enter an address below.</p>{session?.dataMode === 'demo' && <div className="city-shortcuts">{BAY_AREAS.map(area => <button key={area.label} className="button" onClick={() => chooseLocation(area, area.label)}>{area.label}</button>)}</div>}<LocationSearch key={homeAddress?.label ?? "no-home"} proximity={location} initialValue={homeAddress?.label ?? ""} clearInitialOnFocus onSelect={area => chooseLocation(area, area.label)} />{homeAddress && <button className="button home-area-shortcut" onClick={() => chooseLocation(homeAddress, homeAddress.label, 'home')}>Search near saved home</button>}{location && <button className="text-button" onClick={() => setStage('explore')}>Back to results</button>}</section>}
+      {stage === 'location' && <section><p className="eyebrow">Let’s look around</p><h1>Where are<br />we eating?</h1><p className="lede">Find food near a street address, campus, neighborhood, or city.</p><button className="button primary" onClick={locate} disabled={busy === 'location'}>{busy === 'location' ? 'Finding your location…' : 'Use my location'}</button><p className="small">Choose your current location, or enter an address below.</p>{session?.dataMode === 'demo' && <div className="city-shortcuts">{BAY_AREAS.map(area => <button key={area.label} className="button" onClick={() => prepareLocation(area, area.label)}>{area.label}</button>)}</div>}<LocationSearch key={homeAddress?.label ?? "no-home"} proximity={location} initialValue={homeAddress?.label ?? ""} clearInitialOnFocus onQueryChange={() => { setLocation(null); locationChoice.current = null; }} onSelect={area => prepareLocation(area, area.label)} />{homeAddress && <button className="button home-area-shortcut" onClick={() => prepareLocation(homeAddress, homeAddress.label, 'home')}>Search near saved home</button>}<label className="new-search-query" htmlFor="new-food-query">What are you craving? <span className="muted">(optional)</span><input id="new-food-query" value={queryDraft} maxLength={150} onChange={event => setQueryDraft(event.target.value)} placeholder="Noodles, dumplings, a restaurant name..." /></label><SearchFilters filters={filters} onChange={updateFilters} /><div className="new-search-start"><p>{location ? `Search near ${areaLabel}` : 'Choose an address or your current location to continue.'}</p><button className="button primary" disabled={!location || busy === 'location'} onClick={() => { if (location) { const next = { ...filters, query: queryDraft.trim() }; setFilters(next); beginDiscovery(location, next); } }}>Start search</button></div>{results && <button className="text-button" onClick={() => setStage('explore')}>Back to results</button>}</section>}
 
-      {stage === 'explore' && <section><div className="explore-heading"><div><p className="eyebrow">Picked for you · {areaLabel}</p><h1>What sounds good?</h1></div><button className="button" onClick={() => setStage('location')}>Change area</button></div><div className="discover-toolbar"><div className="tabs" aria-label="Discovery type"><button aria-pressed={filters.mode === 'for-you'} onClick={() => updateFilters({ mode: 'for-you' })}>For you</button><button aria-pressed={filters.mode === 'fusion'} onClick={() => updateFilters({ mode: 'fusion' })}>Fusion finds</button></div><button className="button mobile-map-toggle" onClick={() => setShowMap(!showMap)} aria-pressed={showMap}>{showMap ? 'Show list' : 'Show map'}</button></div>
-        <form className="discovery-search" onSubmit={event => { event.preventDefault(); updateFilters({ query: queryDraft.trim() }); }}><label htmlFor="food-search" className="sr-only">Search dishes or restaurant names</label><input id="food-search" value={queryDraft} onChange={event => setQueryDraft(event.target.value)} maxLength={150} placeholder="Noodles, dumplings, a restaurant name…" /><button className="button">Search</button></form><p className="small area-search-help">Looking for a street, campus, or city? <button className="text-button" onClick={() => setStage('location')}>Change area</button></p><div className="filters"><label>Distance<select value={filters.radiusKm} onChange={event => updateFilters({ radiusKm: Number(event.target.value) })}><option value="2">About 1 mile</option><option value="5">About 3 miles</option><option value="15">About 9 miles</option><option value="50">About 30 miles</option></select></label><label>Price<select value={filters.maxPrice} onChange={event => updateFilters({ maxPrice: Number(event.target.value) })}><option value="4">Any price</option><option value="1">$</option><option value="2">Up to $$</option><option value="3">Up to $$$</option></select></label><label>Cuisine<select value={filters.cuisine} onChange={event => updateFilters({ cuisine: event.target.value })}><option value="">All cuisines</option>{CUISINES.map(cuisine => <option value={cuisine} key={cuisine}>{cuisine}</option>)}</select></label><label>Food type<select value={filters.foodType} onChange={event => updateFilters({ foodType: event.target.value })}><option value="">Any food</option>{FOOD_TYPES.map(food => <option value={food.id} key={food.id}>{food.label}</option>)}</select></label></div>
+      {stage === 'explore' && <section><div className="explore-heading"><div><p className="eyebrow">Picked for you · {areaLabel}</p><h1 tabIndex={-1} className="current-search-title">{currentSearch?.title ?? 'Your search'}</h1></div></div><div className="search-toolbar"><p className="small">{results ? `${results.items.length} ${results.items.length === 1 ? 'place' : 'places'}` : 'Finding places...'}</p><div className="inline-actions"><button className="button" disabled={!location || busy === 'discover'} onClick={refreshCurrentSearch}>Refresh search</button><button className="button mobile-map-toggle" onClick={() => setShowMap(!showMap)} aria-pressed={showMap}>{showMap ? 'Show list' : 'Show map'}</button></div></div>
+        <details key={snapshotVersion.current} className="search-adjust"><summary>Adjust search</summary><p className="small">Search with these options creates a new list.</p><form className="adjust-search-form" onSubmit={runAdjustedSearch}><label htmlFor="food-search">Search dishes or restaurant names</label><input id="food-search" value={queryDraft} onChange={event => setQueryDraft(event.target.value)} maxLength={150} placeholder="Noodles, dumplings, a restaurant name..." /><SearchFilters filters={filters} onChange={updateFilters} /><button className="button primary" type="submit">Search</button></form><p className="small area-search-help">Looking for a street, campus, or city? <button className="text-button" onClick={newSearch}>Change area</button></p></details>
+
         {discoveryPhase === 'places' && <p className="refresh-status" role="status">Searching Google Maps for places in {areaLabel}… Results and map pins appear as they arrive.</p>}{discoveryPhase === 'reviews' && <p className="refresh-status" role="status">Places are ready. We’re checking food details to improve your recommendations.</p>}{pendingResults && <button className="button refresh-button" onClick={() => { appliedResults.current = pendingResults; setResults(pendingResults); setPendingResults(null); }}>Fresh details are ready. Update results</button>}
-        <div className={`discovery-grid ${showMap ? 'show-map' : ''}`}><div className="restaurant-list" aria-busy={busy === 'discover'}>{busy === 'discover' && !results && <div className="empty" role="status">Finding your next spot…</div>}{results?.items.length === 0 && discoveryPhase === 'complete' && <div className="empty"><Bowl /><h2>No matching places found</h2><p>Try a wider distance, a different cuisine, or change the area.</p></div>}{results?.items.map((item, index) => <article className="restaurant-card" key={item.restaurant.id}><div className="card-photo"><RestaurantPhoto restaurant={item.restaurant} /><span className="list-position" aria-label={`Recommendation ${index + 1}`}>{index + 1}</span></div><div className="card-content"><RestaurantTags restaurant={item.restaurant} /><button className="restaurant-title" onClick={() => setSelected(item)}>{item.restaurant.name}</button><p className="small">{item.restaurant.city} · {<PriceInfo restaurant={item.restaurant} />} · {distanceLabel(item.distanceKm)}</p><div className="field-note"><MatchInsights item={item} /></div><div className="card-footer"><span className="small card-source"><span>Google: {item.restaurant.googleRating ?? 'unrated'}{item.restaurant.googleRating !== null ? '/5' : ''}</span><span>Checked {new Date(item.restaurant.fetchedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span><button className="button save-button" aria-label={`${savedPlaces.some(place => place.id === item.restaurant.id) ? 'Unsave' : 'Save'} ${item.restaurant.name}`} aria-pressed={savedPlaces.some(place => place.id === item.restaurant.id)} onClick={() => void toggleSaved(item.restaurant)}>{savedPlaces.some(place => place.id === item.restaurant.id) ? 'Saved' : 'Save'}</button></div></div></article>)}</div><aside className="map-column" aria-label="Map view">{location && <RestaurantMap items={results?.items ?? []} center={location} selectedId={selected?.restaurant.id} searching={discoveryPhase === 'places'} onSelect={setSelected} onSearchArea={area => chooseLocation(area, 'Selected map area')} />}</aside></div></section>}
+        <div className={`discovery-grid ${showMap ? 'show-map' : ''}`}><div className="restaurant-list" aria-busy={busy === 'discover'}>{busy === 'discover' && !results && <div className="empty" role="status">Finding your next spot…</div>}{results?.items.length === 0 && discoveryPhase === 'complete' && <div className="empty"><Bowl /><h2>No matching places found</h2><p>Try a wider distance, a different cuisine, or change the area.</p></div>}{results?.items.map((item, index) => <article className="restaurant-card" key={item.restaurant.id}><div className="card-photo"><RestaurantPhoto restaurant={item.restaurant} /><span className="list-position" aria-label={`Recommendation ${index + 1}`}>{index + 1}</span></div><div className="card-content"><RestaurantTags restaurant={item.restaurant} /><button className="restaurant-title" onClick={() => setSelected(item)}>{item.restaurant.name}</button><p className="small">{item.restaurant.city} · {<PriceInfo restaurant={item.restaurant} />} · {distanceLabel(item.distanceKm)}</p><div className="field-note"><MatchInsights item={item} /></div><div className="card-footer"><span className="small card-source"><span>Google: {item.restaurant.googleRating ?? 'unrated'}{item.restaurant.googleRating !== null ? '/5' : ''}</span><span>Checked {new Date(item.restaurant.fetchedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span></div>{actionsFor(item.restaurant)}</div></article>)}</div><aside className="map-column" aria-label="Map view">{location && <RestaurantMap items={results?.items ?? []} center={location} selectedId={selected?.restaurant.id} searching={discoveryPhase === 'places'} onSelect={setSelected} onSearchArea={area => chooseLocation(area, 'Selected map area')} />}</aside></div></section>}
 
-      {stage === 'saved' && <section><p className="eyebrow">For another day</p><h1>Your saved spots.</h1>{savedPlaces.length === 0 ? <div className="empty"><Bowl /><h2>A good meal to look forward to</h2><p>Save a restaurant while exploring, and it’ll be waiting here.</p><button className="button primary" onClick={returnToExplore}>Find somewhere to eat</button></div> : <div className="saved-grid">{savedPlaces.map(restaurant => <article className="saved-card" key={restaurant.id}><RestaurantPhoto restaurant={restaurant} /><div className="card-content"><p className="eyebrow">{restaurant.city}</p><button className="restaurant-title" onClick={() => setSelected({ restaurant, score: 0, distanceKm: 0, confidence: restaurant.features?.confidence ?? 0, explanation: 'A place you saved to explore later.' })}>{restaurant.name}</button><RestaurantTags restaurant={restaurant} /><p><PriceInfo restaurant={restaurant} /></p><button className="button" onClick={() => void toggleSaved(restaurant)}>Remove from Saved</button></div></article>)}</div>}</section>}
+      {stage === 'saved' && <section><p className="eyebrow">For another day</p><h1>Your places.</h1><section aria-labelledby="liked-places-heading"><h2 className="saved-section-heading" id="liked-places-heading">Liked places</h2>{feedback.some(item => item.sentiment === 'like') ? <div className="saved-grid">{feedback.filter(item => item.sentiment === 'like').map(item => collectionCard(item.restaurant))}</div> : <p className="liked-empty">Like a restaurant to keep it here and help shape future recommendations.</p>}</section><section aria-labelledby="saved-places-heading"><h2 className="saved-section-heading" id="saved-places-heading">Saved places</h2>{savedPlaces.length ? <div className="saved-grid">{savedPlaces.map(collectionCard)}</div> : <p className="liked-empty">Save a place to bookmark it. Saving and liking are separate.</p>}</section><button className="button" onClick={returnToExplore}>Back to your search</button></section>}
+
     </main>
-    {session?.user && profile && stage !== 'loading' && stage !== 'login' && stage !== 'location' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' ? 'page' : undefined} onClick={returnToExplore}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>}
     <SiteFooter />
-    {selected && <Details item={selected} saved={savedPlaces.some(place => place.id === selected.restaurant.id)} saving={savingIds.includes(selected.restaurant.id)} onSave={() => void toggleSaved(selected.restaurant)} onClose={closeDetails} />}
+    {selected && <Details item={selected} actions={actionsFor(selected.restaurant)} onClose={closeDetails} />}
   </div>;
 }

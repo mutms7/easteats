@@ -1,3 +1,4 @@
+import { openAdjustSearch } from './search-fixtures';
 import { test, expect, type Page } from '@playwright/test';
 import type { Restaurant } from '../../src/lib/contracts';
 
@@ -19,12 +20,14 @@ async function chooseWaterloo(page: Page) {
   await page.route('**/api/session', route => route.fulfill({ json: { user: { id: 'fixture-discovery-user' }, configured: true, demo: false, dataMode: 'live', profile, answers: { favorites: [{ restaurantId: 'fixture-favorite', name: 'Favorite', city: '', reasons: ['Food'], notes: '' }] } } }));
   await page.route('**/api/saved', route => route.fulfill({ json: { items: [] } }));
   await page.route('**/api/geocode', route => route.fulfill({ json: { items: [{ label: 'University Avenue, Waterloo, Ontario', lat: 43.517834, lng: -80.517859 }] } }));
+  await page.route('**/api/searches', route => route.fulfill({ json: { items: [] } }));
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Where are.*we eating/ })).toBeVisible();
   await page.clock.install();
   await page.getByRole('combobox', { name: 'Address or area' }).fill('University Avenue Waterloo');
   await page.getByRole('button', { name: 'Find area', exact: true }).click();
   await page.getByRole('option', { name: 'University Avenue, Waterloo, Ontario', exact: true }).click();
+  await page.getByRole('button', { name: 'Start search', exact: true }).click();
 }
 
 test('a cold area fills automatically and exposes every matching map location @smoke', async ({ page }) => {
@@ -77,11 +80,13 @@ test('every repeated discovery submit and filter change gets a fresh search ID',
   });
   await chooseWaterloo(page);
   await expect(page.getByRole('button', { name: 'Campus Noodles', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await openAdjustSearch(page); await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect.poll(() => submitted.length).toBe(2);
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await openAdjustSearch(page); await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect.poll(() => submitted.length).toBe(3);
-  await page.getByRole('combobox', { name: 'Distance', exact: true }).selectOption('15');
+  await openAdjustSearch(page); await page.getByRole('combobox', { name: 'Distance', exact: true }).selectOption('15');
+  expect(submitted).toHaveLength(3);
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect.poll(() => submitted.length).toBe(4);
   expect(new Set(submitted.map(input => input.searchId)).size).toBe(4);
   expect(submitted.map(input => input.query)).toEqual(['', '', '', '']);
@@ -123,8 +128,8 @@ test('an older discovery job cannot merge its places into a new search intent', 
   await expect(page.getByRole('button', { name: 'Campus Noodles', exact: true })).toBeVisible();
   await page.clock.fastForward(3100);
   await expect.poll(() => oldPollStarted).toBe(true);
-  await page.getByRole('textbox', { name: 'Search dishes or restaurant names' }).fill('New restaurant');
-  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await openAdjustSearch(page); await page.getByRole('textbox', { name: 'Search dishes or restaurant names' }).fill('New restaurant');
+  await openAdjustSearch(page); await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.getByRole('button', { name: 'New Search Result', exact: true })).toBeVisible();
   releaseOldPoll();
   await page.clock.fastForward(10000);

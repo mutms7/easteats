@@ -6,6 +6,8 @@ Implemented native screens: Google system-browser sign-in, optional native Sign 
 
 This is release preparation, not a published or device-verified app. Read [release/STATUS.md](release/STATUS.md) before building or submitting.
 
+The native client also restores the most recently opened account search without starting discovery, shows recent search buttons and an expanded history chooser, and keeps draft filters free until Start search or Search with these options. Refresh uses the applied filters and the existing conversation. Restaurant cards have five score circles, Like/Dislike, bookmarks and Eat here. A pending meal opinion appears on the next app visit. Liked places stay separate from bookmarks. These flows use the same private `/api/searches`, `/api/feedback` and `/api/meal` endpoints as the website. The offline Saved snapshot remains separate from account search history.
+
 ## Run locally
 
 Use Node 24 (Expo SDK 58 requires at least Node 22.13). First install web dependencies from the repository root, then install the native package:

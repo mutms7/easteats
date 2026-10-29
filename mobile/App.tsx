@@ -16,8 +16,9 @@ import { AreaPicker } from './src/AreaPicker';
 import { NativeMap } from './src/NativeMap';
 import { GOALS, Questionnaire, validAnswers } from './src/Questionnaire';
 import { RestaurantCard } from './src/RestaurantCard';
+import { SearchOptions } from './src/SearchOptions';
 import { brand, Button, Field, s, T, Title } from './src/ui';
-import type { DiscoverInput, DiscoverResponse, Location, RankedRestaurant, Restaurant, SavedLocation, TasteInput, TasteProfile } from './src/types';
+import type { DiscoverInput, DiscoverResponse, Location, RankedRestaurant, Restaurant, SavedLocation, TasteInput, TasteProfile, SavedSearch, SavedSearchSummary, FeedbackItem, FeedbackSentiment, MealCheckin } from './src/types';
 
 type Stage = 'taste' | 'interpretation' | 'location' | 'explore' | 'saved' | 'account';
 type Intent = { input: DiscoverInput; label: string };
@@ -41,6 +42,12 @@ export default function App() {
   const locationOperation = useRef(0); const stageRef = useRef(stage); stageRef.current = stage;
   const [cuisine, setCuisine] = useState(''); const [foodType, setFoodType] = useState('');
   const [correction, setCorrection] = useState(''); const [appleAvailable, setAppleAvailable] = useState(false);
+  const [history, setHistory] = useState<SavedSearchSummary[]>([]); const [activeSearch, setActiveSearch] = useState<SavedSearchSummary|null>(null);
+  const [feedback, setFeedback] = useState<FeedbackItem[]>([]); const [pendingMeal, setPendingMeal] = useState<MealCheckin|null>(null);
+  const [chosenPlace, setChosenPlace] = useState(''); const [allHistory, setAllHistory] = useState(false);
+  const [adjustingSearch, setAdjustingSearch] = useState(false);
+  const searchOperation = useRef(0);
+  const appliedInput = useRef<DiscoverInput|null>(null);
   const action = useRef(false); const accountOperation = useRef(0); const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const userId = auth?.user.id;
 
@@ -65,6 +72,7 @@ export default function App() {
   useEffect(() => {
     const operation = ++accountOperation.current; let cancelled = false;
     setDraftReady(false); setItems([]); setIntent(null); setSaved([]); setProfile(null); setAnswers(emptyAnswers()); setMessage(''); setHomeAddress(null); setVisitLocation(null); locationChoice.current = null; locationOperation.current += 1;
+    setHistory([]); setActiveSearch(null); setFeedback([]); setPendingMeal(null); setChosenPlace(''); searchOperation.current += 1;
     if (!userId) return;
     setBooting(true);
     void (async () => {
@@ -76,8 +84,20 @@ export default function App() {
         if (cancelled || operation !== accountOperation.current) return;
         setAnswers(draft ?? data.answers ?? emptyAnswers()); setProfile(data.profile); setDraftReady(true);
         const home = data.homeAddress ?? null; setHomeAddress(home); setVisitLocation(home); locationChoice.current = home ? 'home' : null;
-        if (data.profile && home) discover(home, home.label);
-        else setStage(data.profile ? 'location' : 'taste');
+        if (data.profile) {
+          const [searches, votes, meal] = await Promise.all([
+            api<{items:SavedSearchSummary[]}>('/api/searches'),
+            api<{items:FeedbackItem[]}>('/api/feedback').catch(()=>({items:[]})),
+            api<{pendingMeal:MealCheckin|null}>('/api/meal').catch(()=>({pendingMeal:null})),
+          ]);
+          if (cancelled || operation !== accountOperation.current) return;
+          setHistory(searches.items); setFeedback(votes.items); setPendingMeal(meal.pendingMeal); setChosenPlace(meal.pendingMeal?.restaurantId ?? '');
+          if (searches.items.length) {
+            const previous=await api<{search:SavedSearch}>(`/api/searches/${encodeURIComponent(searches.items[0].id)}`);
+            if (cancelled || operation !== accountOperation.current) return;
+            restoreSearch(previous.search);
+          } else setStage('location');
+        } else setStage('taste');
         if (data.warning) setMessage(data.warning);
         try { const places = await api<{ items: Restaurant[] }>('/api/saved'); if (cancelled) return; setSaved(places.items); setOfflineSaved(false); void secureStorage.setItem(storageKey(userId, 'saved'), JSON.stringify(places.items)).catch(() => {}); }
         catch { const cached = await secureStorage.getItem(storageKey(userId, 'saved')); if (!cancelled && cached) { const data = JSON.parse(cached) as Restaurant[]; if (Array.isArray(data)) { setSaved(data); setOfflineSaved(true); } } }
@@ -115,18 +135,38 @@ export default function App() {
   }
   function returnToExplore() {
     if (!profile) { setStage('taste'); return; }
-    if (!visitLocation) { setStage('location'); return; }
-    if (!intent || intent.input.lat !== visitLocation.lat || intent.input.lng !== visitLocation.lng) discover(visitLocation, visitLocation.label);
-    else setStage('explore');
+    setStage(activeSearch || intent ? 'explore' : 'location');
   }
-  function discover(point: Location, label: string, patch: Partial<{ radius: number; query: string; mode: 'for-you' | 'fusion'; cuisine: string; foodType: string }> = {}) {
+  function restoreSearch(search:SavedSearch) {
+    setAdjustingSearch(false);
+    appliedInput.current=search.input;
+    setIntent(null); setActiveSearch(search); setItems(search.items); setQuery(search.input.query); setRadius(search.input.radiusKm); setCuisine(search.input.cuisine); setFoodType(search.input.foodType ?? ''); setMode('for-you');
+    setVisitLocation({lat:search.input.lat,lng:search.input.lng,label:search.areaLabel}); locationChoice.current='manual';
+    setSearchState('Saved results. Opening this list does not start a new search.'); setStage('explore');
+  }
+  async function openSearch(id:string) {
+    const operation=++searchOperation.current, account=accountOperation.current; setIntent(null);
+    const result=await api<{search:SavedSearch}>(`/api/searches/${encodeURIComponent(id)}`);
+    if(operation!==searchOperation.current || account!==accountOperation.current)return;
+    restoreSearch(result.search); setHistory(current=>[result.search,...current.filter(item=>item.id!==id)]); setAllHistory(false);
+  }
+  function newSearch() {
+    setAdjustingSearch(false);
+    appliedInput.current=null;
+    searchOperation.current+=1; setIntent(null); setActiveSearch(null); setItems([]); setQuery(''); setCuisine(''); setFoodType(''); setRadius(5); setMode('for-you'); setSearchState('');
+    setVisitLocation(homeAddress); locationChoice.current=homeAddress?'home':null; setStage('location');
+  }
+  function discover(point: Location, label: string, patch: Partial<{ radius: number; query: string; mode: 'for-you' | 'fusion'; cuisine: string; foodType: string }> = {}, refresh=false) {
+    setAdjustingSearch(false);
     const next = { radius, query, mode, cuisine, foodType, ...patch };
+    searchOperation.current+=1; if(!refresh)setActiveSearch(null);
     setItems([]); setSearchState('Searching Google Maps...'); setVisitLocation({ lat: point.lat, lng: point.lng, label });
-    setIntent({ input: { lat: point.lat, lng: point.lng, radiusKm: next.radius, query: next.query.trim(), mode: next.mode, cuisine: next.cuisine, foodType: next.foodType, maxPrice: 4, searchId: Crypto.randomUUID() }, label }); setStage('explore');
+    const input:DiscoverInput={lat:point.lat,lng:point.lng,areaLabel:label,...(refresh&&activeSearch?{savedSearchId:activeSearch.id}:{}),radiusKm:next.radius,query:next.query.trim(),mode:'for-you',cuisine:next.cuisine,foodType:next.foodType,maxPrice:4,searchId:Crypto.randomUUID()};
+    appliedInput.current=input; setIntent({ input, label }); setStage('explore');
   }
   useEffect(() => {
     if (!intent || !userId) return;
-    const controller = new AbortController(); const started = Date.now();
+    const controller = new AbortController(); const started = Date.now(); let titleTimer:ReturnType<typeof setTimeout>|undefined;
     void (async () => {
       try {
         while (!controller.signal.aborted) {
@@ -136,11 +176,14 @@ export default function App() {
           if (controller.signal.aborted) return;
           const preferRelevance = Boolean(intent.input.query.trim() || intent.input.foodType || intent.input.cuisine);
           setItems(current => mergePlaces(current, data.items, data.job?.status === 'succeeded', preferRelevance));
+          if(data.savedSearch){setActiveSearch(data.savedSearch);setHistory(current=>[data.savedSearch!,...current.filter(item=>item.id!==data.savedSearch!.id)]);}
           if (data.warning) setMessage(data.warning);
           const placesPending = activeJob(data.job?.status), reviewsPending = activeJob(data.enrichmentJob?.status);
           if (!placesPending && !reviewsPending) {
             const stopped = (data.job && data.job.status !== 'succeeded') || (!data.job && data.dataMode === 'live' && data.warning);
-            setSearchState(stopped ? 'The live search did not finish. Any places already found are still here.' : data.items.length ? 'Places are ready.' : 'No matching places found. Try a wider distance or another area.'); return;
+            setSearchState(stopped ? 'The live search did not finish. Any places already found are still here.' : data.items.length ? 'Places are ready.' : 'No matching places found. Try a wider distance or another area.');
+            if(data.savedSearch)titleTimer=setTimeout(()=>{if(controller.signal.aborted)return;void api<{items:SavedSearchSummary[]}>('/api/searches').then(value=>{if(controller.signal.aborted)return;setHistory(value.items);setActiveSearch(current=>value.items.find(item=>item.id===current?.id)??current);}).catch(()=>{});},10000);
+            return;
           }
           setSearchState(placesPending ? 'Searching Google Maps... Places appear as they arrive.' : 'Places are ready. Checking food details in the background.');
           if (Date.now() - started > 300_000) { setSearchState('The search is taking longer than expected. Refresh results to retry.'); return; }
@@ -149,7 +192,7 @@ export default function App() {
         }
       } catch (error) { if (!controller.signal.aborted) setSearchState(error instanceof Error ? error.message : 'The search did not finish. Please retry.'); }
     })();
-    return () => controller.abort();
+    return () => { controller.abort(); if(titleTimer)clearTimeout(titleTimer); };
   }, [intent, userId]);
 
   async function saveTaste() {
@@ -164,6 +207,22 @@ export default function App() {
     setSaved(next); setOfflineSaved(false);
     if (userId) void secureStorage.setItem(storageKey(userId, 'saved'), JSON.stringify(next)).catch(() => {});
   }
+  async function ratePlace(restaurantId:string,sentiment:FeedbackSentiment|null,answerMeal=false) {
+    const operation=searchOperation.current, account=accountOperation.current;
+    const result=await api<{items:FeedbackItem[]}>('/api/feedback',{restaurantId,sentiment,...(answerMeal?{answerMeal:true}:{})},'PUT');
+    if(account!==accountOperation.current)return;
+    setFeedback(result.items); if(answerMeal){setPendingMeal(null);setChosenPlace('');}
+    if(activeSearch){
+      const fresh=await api<{search:SavedSearch}>(`/api/searches/${encodeURIComponent(activeSearch.id)}`);
+      if(operation===searchOperation.current&&account===accountOperation.current){setItems(fresh.search.items);setActiveSearch(fresh.search);}
+    }
+  }
+  async function choosePlace(restaurantId:string) {
+    const account=accountOperation.current;
+    await api('/api/meal',{restaurantId,...(activeSearch?{searchId:activeSearch.id}:{})},'PUT');
+    if(account!==accountOperation.current)return;
+    setChosenPlace(restaurantId); setMessage('Meal chosen. We will ask how it was next time you visit.');
+  }
   async function signOut() {
     const { error } = await supabase!.auth.signOut({ scope: 'local' }); if (error) throw new Error('Sign-out did not finish. Please retry.');
     if (userId) await Promise.all(['taste', 'saved'].map(part => secureStorage.removeItem(storageKey(userId, part))));
@@ -172,16 +231,25 @@ export default function App() {
   function deleteAccount() {
     Alert.alert('Delete your East Eats account?', 'This permanently deletes your taste profile and saved places. This cannot be undone.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete account', style: 'destructive', onPress: () => { void perform('delete', async () => { const result = await api<{ deleted: boolean }>('/api/account', { confirmation: 'DELETE' }, 'DELETE'); if (result.deleted !== true) throw new Error('Account deletion was not confirmed. Please retry.'); await supabase!.auth.signOut({ scope: 'local' }); if (userId) await Promise.all(['taste', 'saved'].map(part => secureStorage.removeItem(storageKey(userId, part)))); setAuth(null); }); } }]);
   }
-  const card = (restaurant: Restaurant, rank?: RankedRestaurant) => <RestaurantCard key={restaurant.id} restaurant={restaurant} rank={rank} saved={saved.some(place => place.id === restaurant.id)} busy={Boolean(busy)} onSave={() => { void perform('saved', () => toggleSaved(restaurant)); }} />;
+  const card = (restaurant: Restaurant, rank?: RankedRestaurant) => <RestaurantCard key={restaurant.id} restaurant={restaurant} rank={rank} saved={saved.some(place => place.id === restaurant.id)} busy={Boolean(busy)} onSave={() => { void perform('saved', () => toggleSaved(restaurant)); }} sentiment={feedback.find(vote=>vote.restaurantId===restaurant.id)?.sentiment} onFeedback={value=>{void perform('feedback',()=>ratePlace(restaurant.id,value));}} onChoose={()=>{void perform('meal',()=>choosePlace(restaurant.id));}} chosen={chosenPlace===restaurant.id} />;
 
   return <SafeAreaProvider><SafeAreaView style={s.safe}><StatusBar style="dark" /><View style={s.header}><T style={s.wordmark}>east eats.</T>{auth && <Button title="Account" secondary onPress={() => setStage('account')} />}</View><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><ScrollView ref={scroll} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
     {message && <View style={s.notice}><T accessibilityRole="alert" style={{ fontSize: 14 }}>{message}</T><Button title="Dismiss" secondary onPress={() => setMessage('')} /></View>}
     {(!fontsLoaded && !fontError) || booting ? <ActivityIndicator color={brand} accessibilityLabel="Loading East Eats" /> : !auth ? <View style={{ gap: 22 }}><Title>Find your kind of good.</Title><T style={s.subtitle}>East Asian food picked for your taste. Start with the places you already love.</T><Button title={busy ? 'Opening sign-in...' : 'Continue with Google'} secondary disabled={!configured || Boolean(busy)} onPress={() => { void perform('login', signInGoogle); }} />{appleAvailable && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={25} style={{ width: '100%', height: 50 }} onPress={() => { void perform('login', signInApple); }} />}{!configured && <T style={s.small}>This development build needs the public Supabase URL and publishable key before sign-in is available.</T>}<Button title="Privacy policy" secondary onPress={() => { void Linking.openURL(`${API_ORIGIN}/privacy`); }} /></View> : <>
+    {pendingMeal && <View style={s.card}><T accessibilityRole="header" style={s.sectionTitle}>How was {pendingMeal.restaurant.name}?</T><T style={s.small}>Your opinion helps pick the next meal.</T><View style={s.wrap}>{(['like','neutral','dislike'] as const).map(value=><Button key={value} title={value==='like'?'Liked it':value==='neutral'?'It was okay':'Disliked it'} disabled={Boolean(busy)} secondary onPress={()=>{void perform('opinion',()=>ratePlace(pendingMeal.restaurantId,value,true));}} />)}</View><Button title="Not yet" secondary onPress={()=>setPendingMeal(null)} /></View>}
+    {profile && <View style={{gap:10}}><View style={[s.row,{justifyContent:'space-between'}]}><T style={s.label}>Your searches</T><Button title="New search" secondary disabled={Boolean(busy)} onPress={newSearch} /></View><ScrollView horizontal contentContainerStyle={{gap:8}}>{history.slice(0,4).map(search=><Button key={search.id} title={search.title} selected={activeSearch?.id===search.id} disabled={Boolean(busy)} secondary onPress={()=>{void perform('history',()=>openSearch(search.id));}} />)}</ScrollView>{history.length>4&&<Button title={allHistory?'Hide history':'All searches'} secondary onPress={()=>setAllHistory(!allHistory)} />}{allHistory&&history.map(search=><Button key={search.id} title={search.title+' · '+search.resultCount+' places'} disabled={Boolean(busy)} secondary onPress={()=>{void perform('history',()=>openSearch(search.id));}} />)}</View>}
     {stage === 'taste' && <Questionnaire answers={answers} onChange={setAnswers} onSave={() => { void perform('taste', saveTaste); }} busy={Boolean(busy)} homeEditor={<HomeAddress key={userId} value={homeAddress} onChange={updateHome} onUseCurrent={() => { void perform('location', useCurrent); }} locating={busy === 'location'} />} />}
-    {stage === 'interpretation' && profile && <View style={{ gap: 20 }}><Title>Here is what we are hearing.</Title><T style={s.small}>Right now: {GOALS.find(goal => goal.value === answers.goal)?.label ?? 'A bit of everything'}</T><View style={s.card}><T>{profile.interpretation}</T></View><Field label="Anything we missed?" multiline value={correction} onChangeText={setCorrection} maxLength={1500} /><Button title="Update my tastes" secondary disabled={Boolean(busy)} onPress={() => { void perform('taste', saveTaste); }} /><Button title="Find somewhere" onPress={() => { if (visitLocation) discover(visitLocation, visitLocation.label); else setStage('location'); }} /><Button title="Edit my favorites" secondary onPress={() => setStage('taste')} /></View>}
-    {stage === 'location' && <><AreaPicker key={homeAddress?.label ?? 'none'} initialValue={homeAddress?.label ?? ''} onChoose={(point, label) => { locationChoice.current = label === 'Near you' ? 'gps' : 'manual'; discover(point, label); }} />{homeAddress && <Button title="Search near saved home" secondary onPress={() => { locationChoice.current = 'home'; discover(homeAddress, homeAddress.label); }} />}</>}
-    {stage === 'explore' && intent && <View style={{ gap: 18 }}><T style={s.small}>Picked for you / {intent.label}</T><Title>What sounds good?</Title><Button title="Change area" secondary onPress={() => setStage('location')} /><Field label="Dishes or restaurant names" value={query} onChangeText={setQuery} maxLength={150} onSubmitEditing={() => discover(intent.input, intent.label)} /><Button title="Search" onPress={() => discover(intent.input, intent.label)} /><View style={s.wrap}>{[2, 5, 15].map(value => <Button key={value} title={`${value} km`} secondary selected={radius === value} onPress={() => { setRadius(value); discover(intent.input, intent.label, { radius: value, mode, query }); }} />)}</View><View style={s.row}>{(['for-you', 'fusion'] as const).map(value => <View key={value} style={{ flex: 1 }}><Button title={value === 'for-you' ? 'For you' : 'Fusion finds'} secondary selected={mode === value} onPress={() => { setMode(value); discover(intent.input, intent.label, { radius, query, mode: value }); }} /></View>)}</View><T style={s.label}>Cuisine</T><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}><Button title="Any cuisine" secondary selected={!cuisine} onPress={() => { setCuisine(''); discover(intent.input, intent.label, { cuisine: '' }); }} />{CUISINES.map(value => <Button key={value} title={value} secondary selected={cuisine === value} onPress={() => { setCuisine(value); discover(intent.input, intent.label, { cuisine: value }); }} />)}</ScrollView><T style={s.label}>Food type</T><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}><Button title="Any food" secondary selected={!foodType} onPress={() => { setFoodType(''); discover(intent.input, intent.label, { foodType: '' }); }} />{FOOD_TYPES.map(food => <Button key={food.id} title={food.label} secondary selected={foodType === food.id} onPress={() => { setFoodType(food.id); discover(intent.input, intent.label, { foodType: food.id }); }} />)}</ScrollView><T accessibilityLiveRegion="polite" style={s.small}>{searchState}</T><Button title={showMap ? 'Hide map' : 'Show map'} secondary onPress={() => setShowMap(!showMap)} />{showMap && <NativeMap center={intent.input} items={items} />}{items.map(item => card(item.restaurant, item))}<Button title="Refresh results" secondary onPress={() => discover(intent.input, intent.label)} /></View>}
-    {stage === 'saved' && <View style={{ gap: 18 }}><Title>Your saved spots.</Title>{offlineSaved && <T style={s.small}>Showing your saved offline copy. Details may have changed.</T>}{saved.length ? saved.map(place => card(place)) : <T>Save a restaurant while exploring and it will be waiting here.</T>}</View>}
+    {stage === 'interpretation' && profile && <View style={{ gap: 20 }}><Title>Here is what we are hearing.</Title><T style={s.small}>Right now: {GOALS.find(goal => goal.value === answers.goal)?.label ?? 'A bit of everything'}</T><View style={s.card}><T>{profile.interpretation}</T></View><Field label="Anything we missed?" multiline value={correction} onChangeText={setCorrection} maxLength={1500} /><Button title="Update my tastes" secondary disabled={Boolean(busy)} onPress={() => { void perform('taste', saveTaste); }} /><Button title="Find somewhere" onPress={returnToExplore} /><Button title="Edit my favorites" secondary onPress={() => setStage('taste')} /></View>}
+    {stage === 'location' && <><SearchOptions query={query} cuisine={cuisine} foodType={foodType} radius={radius} onQuery={setQuery} onCuisine={setCuisine} onFoodType={setFoodType} onRadius={setRadius} /><AreaPicker key={homeAddress?.label ?? 'none'} initialValue={homeAddress?.label ?? ''} onChoose={(point,label)=>{locationChoice.current=label==='Near you'?'gps':'manual';setVisitLocation({...point,label});}} />{homeAddress && <Button title="Use saved home" secondary onPress={()=>{locationChoice.current='home';setVisitLocation(homeAddress);}} />}{visitLocation&&<T style={s.small}>Search near {visitLocation.label}</T>}<Button title="Start search" disabled={!visitLocation||Boolean(busy)} onPress={()=>{if(visitLocation)discover(visitLocation,visitLocation.label);}} /></>}
+    {stage === 'explore' && (activeSearch || intent) && <View style={{gap:18}}>
+      <T style={s.small}>{activeSearch?.areaLabel ?? visitLocation?.label ?? 'Nearby'}</T><Title>{activeSearch?.title ?? 'Finding your next meal.'}</Title>
+      <T style={s.small}>{items.length} {items.length===1?'place':'places'} / {searchState}</T>
+      <View style={s.wrap}><Button title="Adjust search" secondary onPress={()=>setAdjustingSearch(!adjustingSearch)} /><Button title="Refresh this search" secondary disabled={Boolean(busy)} onPress={()=>{if(visitLocation){const applied=appliedInput.current;discover(visitLocation,visitLocation.label,applied?{query:applied.query,cuisine:applied.cuisine,foodType:applied.foodType??'',radius:applied.radiusKm}:{},true);}}} /></View>
+      {adjustingSearch&&<View style={s.card}><T style={s.small}>Run these options to create a new list. Changing options alone doesn't start a search.</T><SearchOptions query={query} cuisine={cuisine} foodType={foodType} radius={radius} onQuery={setQuery} onCuisine={setCuisine} onFoodType={setFoodType} onRadius={setRadius} /><Button title="Search with these options" onPress={()=>{if(visitLocation)discover(visitLocation,visitLocation.label);}} /><Button title="Change area" secondary onPress={()=>setStage('location')} /></View>}
+      <Button title={showMap?'Hide map':'Show map'} secondary onPress={()=>setShowMap(!showMap)} />{showMap&&visitLocation&&<NativeMap center={visitLocation} items={items} />}
+      {items.map(item=>card(item.restaurant,item))}
+    </View>}
+    {stage === 'saved' && <View style={{ gap: 18 }}><Title>Your places.</Title><T accessibilityRole="header" style={s.sectionTitle}>Liked places</T>{feedback.filter(vote=>vote.sentiment==='like').length?feedback.filter(vote=>vote.sentiment==='like').map(vote=>card(vote.restaurant)):<T style={s.small}>Tap Like on a place to keep it here.</T>}<T accessibilityRole="header" style={s.sectionTitle}>Saved bookmarks</T>{offlineSaved && <T style={s.small}>Showing your saved offline copy. Details may have changed.</T>}{saved.length ? saved.map(place => card(place)) : <T>Save a restaurant while exploring and it will be waiting here.</T>}</View>}
     {stage === 'account' && <View style={{ gap: 18 }}><Title>Your account.</Title><HomeAddress key={userId} value={homeAddress} onChange={updateHome} onUseCurrent={() => { void perform('location', useCurrent); }} locating={busy === 'location'} /><T>{auth.user.email}</T><Button title="Privacy policy" secondary onPress={() => { void Linking.openURL(`${API_ORIGIN}/privacy`); }} /><Button title="Account deletion information" secondary onPress={() => { void Linking.openURL(`${API_ORIGIN}/delete-account`); }} /><Button title="Sign out" secondary disabled={Boolean(busy)} onPress={() => { void perform('logout', signOut); }} /><Button title="Delete account" destructive disabled={Boolean(busy)} onPress={deleteAccount} /></View>}
     </>}
   </ScrollView></KeyboardAvoidingView>{auth && !booting && <View style={s.tabs}>{(['explore', 'saved', 'taste'] as const).map(tab => <Pressable key={tab} accessibilityRole="tab" accessibilityState={{ selected: stage === tab }} onPress={() => { if (tab === 'explore') returnToExplore(); else setStage(tab); }} style={[s.tab, stage === tab && { backgroundColor: '#FFF0EC' }]}><T style={[s.tabText, stage === tab && { color: '#B4210B' }]}>{tab === 'explore' ? 'Explore' : tab === 'saved' ? 'Saved' : 'Taste'}</T></Pressable>)}</View>}</SafeAreaView></SafeAreaProvider>;

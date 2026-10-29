@@ -27,14 +27,14 @@ export default function DeleteAccount() {
     } catch(cause) { setError(cause instanceof Error ? cause.message : 'Your account could not be deleted.'); }
     finally { setBusy(false); }
   }
-  if (deleted) return <div role="status"><h2>Your account is deleted.</h2><p>Your profile, favorite notes, home address, and saved places have been removed.</p><Link href="/" className="button">Back to EastEats</Link></div>;
+  if (deleted) return <div role="status"><h2>Your account is deleted.</h2><p>Your profile, favorite notes, home address, search history, restaurant opinions, meal choices, and saved places have been removed.</p><Link href="/" className="button">Back to EastEats</Link></div>;
   return <>
     {loading && <p role="status">Checking your sign-in...</p>}
     {error && <p role="alert">{error}</p>}
     {!loading && !user && <p><Link href="/auth/login?next=/delete-account" className="button primary">Sign in to delete your account</Link></p>}
     {user && <form onSubmit={remove}>
       <p>Signed in{user.email ? ` as ${user.email}` : ''}.</p>
-      <label className="account-delete-confirm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /><span>I understand this permanently removes my EastEats account, preferences, home address, and saved places.</span></label>
+      <label className="account-delete-confirm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /><span>I understand this permanently removes my EastEats account, preferences, home address, search history, restaurant opinions, meal choices, and saved places.</span></label>
       <button className="button primary" type="submit" disabled={!confirmed || busy}>{busy ? 'Deleting account...' : 'Delete my account'}</button>
     </form>}
   </>;

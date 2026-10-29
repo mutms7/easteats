@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import type { DiscoverInput, SavedLocation, TasteInput } from '../../src/lib/contracts';
+import { searchFixtures, openAdjustSearch } from './search-fixtures';
 
 // All businesses, review excerpts and addresses below are browser fixtures.
 const home = { label: 'Fixture home, Waterloo, ON', lat: 43.52, lng: -80.52 };
@@ -11,15 +12,10 @@ const restaurant = { id: 'fixture-noodle-house', name: 'Fixture Noodle House', a
 const ranked = { restaurant, score: 65, distanceKm: 1, confidence: .7, explanation: 'Fixture context.', matchReasons: ['Your favorite mentions noodles; this place lists noodles.'], scoreBreakdown: { food: 83, value: null, service: null, atmosphere: null, taste: null } };
 
 async function fixtures(page: Page, initialHome: SavedLocation | null, completed = true) {
-  let savedHome = initialHome, ready = completed;
-  const discoveries: DiscoverInput[] = [], locations: unknown[] = [], tastes: TasteInput[] = [];
-  await page.route('**/api/session', route => route.fulfill({ json: { user: { id: 'fixture-home-user' }, configured: true, demo: false, dataMode: 'live', profile: ready ? profile : null, answers, homeAddress: savedHome } }));
-  await page.route('**/api/saved', route => route.fulfill({ json: { items: [] } }));
-  await page.route('**/api/location', route => { locations.push(route.request().postDataJSON()); savedHome = route.request().postDataJSON().homeAddress; return route.fulfill({ json: { homeAddress: savedHome } }); });
+  const state = await searchFixtures(page, [], completed);
+  state.home = initialHome;
   await page.route('**/api/geocode', route => { const query = route.request().postDataJSON().query as string; return route.fulfill({ json: { items: query.includes('Second') ? [changedHome] : query.includes('visit') ? [manual] : [home] } }); });
-  await page.route('**/api/taste', route => { tastes.push(route.request().postDataJSON()); ready = true; return route.fulfill({ json: { profile, personalized: true } }); });
-  await page.route('**/api/discover', route => { discoveries.push(route.request().postDataJSON()); return route.fulfill({ json: { items: [ranked], job: null, refreshing: false, profileVersion: 1, dataMode: 'live' } }); });
-  return { discoveries, locations, tastes };
+  return { ...state, discoveries: state.discover };
 }
 async function selectHome(page: Page, text: string, label: string) {
   const editor = page.locator('.home-address');
@@ -33,20 +29,21 @@ async function selectHome(page: Page, text: string, label: string) {
 test('saved home autofills location search and clears on focus without deleting the saved address @smoke',async({page})=>{
  const state=await fixtures(page,home);
  await page.goto('/');
- await expect(page.locator('.restaurant-card')).toHaveCount(1);
- await page.getByRole('button',{name:'Change area',exact:true}).first().click();
+ await expect(page.getByRole('button',{name:'Start search',exact:true})).toBeEnabled();
  const field=page.getByRole('combobox',{name:'Address or area'});
  await expect(field).toHaveValue(home.label);
  await field.click();
  await expect(field).toHaveValue('');
  // Clearing the input is not an account setting change or a new paid search.
  expect(state.locations).toHaveLength(0);
- expect(state.discoveries).toHaveLength(1);
+ expect(state.discoveries).toHaveLength(0);
  await page.getByRole('button',{name:'Search near saved home'}).click();
+ expect(state.discoveries).toHaveLength(0);
+ await page.getByRole('button',{name:'Start search',exact:true}).click();
  await expect(page.locator('.restaurant-card')).toHaveCount(1);
- expect(state.discoveries).toHaveLength(2);
+ expect(state.discoveries).toHaveLength(1);
 });
-test('home save is private, waits for onboarding, and becomes one initial search per visit @smoke', async ({ page }) => {
+test('home save stays private, explicit Start runs once, and reload restores without another source run @smoke', async ({ page }) => {
   const state = await fixtures(page, null, false);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Where do you.*love eating/ })).toBeVisible();
@@ -59,23 +56,25 @@ test('home save is private, waits for onboarding, and becomes one initial search
   expect(state.tastes[0]).not.toHaveProperty('homeAddress');
   expect(JSON.stringify(state.tastes[0])).not.toContain(home.label);
   await page.getByRole('button', { name: /find somewhere/ }).click();
+  expect(state.discoveries).toHaveLength(0);
+  await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await expect(page.locator('.restaurant-card')).toHaveCount(1);
   expect(state.discoveries).toHaveLength(1);
   expect(state.discoveries[0]).toMatchObject({ lat: home.lat, lng: home.lng });
   await page.reload();
   await expect(page.locator('.restaurant-card')).toHaveCount(1);
-  await expect.poll(() => state.discoveries.length).toBe(2);
   await page.waitForTimeout(250);
-  expect(state.discoveries).toHaveLength(2);
+  expect(state.discoveries).toHaveLength(1);
 });
 
 test('manual visit overrides home edits and clear until the next visit', async ({ page }) => {
   const state = await fixtures(page, home);
-  await page.goto('/'); await expect(page.locator('.restaurant-card')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Change area', exact: true }).first().click();
+  await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
+  await openAdjustSearch(page); await page.getByRole('button', { name: 'Change area', exact: true }).first().click();
   await page.getByRole('combobox', { name: 'Address or area', exact: true }).fill('Fixture visit');
   await page.getByRole('button', { name: 'Find area', exact: true }).click();
   await page.getByRole('option', { name: manual.label, exact: true }).click();
+  await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await expect.poll(() => state.discoveries.length).toBe(2);
   await page.getByRole('button', { name: 'Taste', exact: true }).click();
   await page.getByRole('button', { name: 'Change home address', exact: true }).click();
@@ -90,22 +89,24 @@ test('manual visit overrides home edits and clear until the next visit', async (
   await expect(page.getByText(`Picked for you · ${manual.label}`, { exact: true })).toBeVisible();
   expect(state.locations.at(-1)).toEqual({ homeAddress: null });
   await page.reload();
-  await expect(page.getByRole('heading', { name: /Where are.*we eating/ })).toBeVisible();
+  await expect(page.getByText(`Picked for you · ${manual.label}`, { exact: true })).toBeVisible();
+  expect(state.discoveries).toHaveLength(2);
 });
 
 test('food and cuisine filters submit independently and signals never become sliders', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await fixtures(page, home);
-  await page.goto('/'); await expect(page.locator('.restaurant-card')).toHaveCount(1);
-  await page.getByRole('combobox', { name: 'Cuisine', exact: true }).selectOption('Korean');
-  await page.getByRole('combobox', { name: 'Food type', exact: true }).selectOption('noodles');
-  await expect.poll(() => state.discoveries.length).toBe(3);
+  await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
+  await openAdjustSearch(page); await page.getByRole('combobox', { name: 'Cuisine', exact: true }).selectOption('Korean');
+  await openAdjustSearch(page); await page.getByRole('combobox', { name: 'Food type', exact: true }).selectOption('noodles');
+  expect(state.discoveries).toHaveLength(1);
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect.poll(() => state.discoveries.length).toBe(2);
   expect(state.discoveries.at(-1)).toMatchObject({ cuisine: 'Korean', foodType: 'noodles' });
   const card = page.locator('.restaurant-card').first();
-  await expect(card.getByRole('heading', { name: 'Why this place', exact: true })).toBeVisible();
-  await card.locator('summary').click();
-  await expect(card.getByRole('meter', { name: 'Food review signal' })).toHaveAttribute('aria-valuenow', '83');
-  await expect(card.getByText('Unknown', { exact: true })).toHaveCount(4);
+  await expect(card.getByRole('img', { name: 'Food: 83 out of 100', exact: true })).toBeVisible();
+  await expect(card.getByRole('img', { name: 'Value: 0 out of 100', exact: true })).toBeVisible();
+  await expect(card.getByText('Unknown', { exact: true })).toHaveCount(3);
   await expect(page.getByRole('slider')).toHaveCount(0);
   await expect(card.locator('.restaurant-tags').getByText('Korean', { exact: true })).toBeVisible();
   await expect(card.locator('.restaurant-tags').getByText('Noodles', { exact: true })).toBeVisible();
@@ -115,10 +116,11 @@ test('food and cuisine filters submit independently and signals never become sli
 });
 
 test('skip link stays clipped until keyboard focus, then appears at the viewport top', async ({ page }) => {
-  await fixtures(page, home); await page.goto('/'); await expect(page.locator('.restaurant-card')).toHaveCount(1);
+  await fixtures(page, home); await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
   const skip = page.getByRole('link', { name: 'Skip to content', exact: true });
   expect(await skip.evaluate(element => getComputedStyle(element).clipPath)).toBe('inset(50%)');
-  await page.keyboard.press('Tab'); await expect(skip).toBeFocused();
+  await page.getByRole('link', { name: 'East Eats home', exact: true }).focus();
+  await page.keyboard.press('Shift+Tab'); await expect(skip).toBeFocused();
   expect(await skip.evaluate(element => getComputedStyle(element).clipPath)).toBe('none');
   const bounds = await skip.boundingBox(); expect(bounds?.y).toBe(8);
   await page.keyboard.press('Tab');
@@ -135,7 +137,7 @@ test('GPS is requested only by action and overrides home for this visit without 
     } } });
   });
   const state = await fixtures(page, home);
-  await page.goto('/'); await expect(page.locator('.restaurant-card')).toHaveCount(1);
+  await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
   const gpsCalls = () => page.evaluate(() => (window as unknown as { fixtureGPS: { calls: number } }).fixtureGPS.calls);
   expect(await gpsCalls()).toBe(0);
   await page.getByRole('button', { name: 'Taste', exact: true }).click();
@@ -146,11 +148,13 @@ test('GPS is requested only by action and overrides home for this visit without 
   expect(state.discoveries).toHaveLength(1);
   expect(state.locations).toHaveLength(0);
   await page.getByRole('button', { name: 'Explore', exact: true }).click();
+  expect(state.discoveries).toHaveLength(1);
+  await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await expect.poll(() => state.discoveries.length).toBe(2);
   expect(state.discoveries.at(-1)).toMatchObject({ lat: 49.27, lng: -122.8 });
   await page.reload(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
-  await expect.poll(() => state.discoveries.length).toBe(3);
-  expect(state.discoveries.at(-1)).toMatchObject({ lat: home.lat, lng: home.lng });
+  expect(state.discoveries).toHaveLength(2);
+  expect(state.discoveries.at(-1)).toMatchObject({ lat: 49.27, lng: -122.8 });
 });
 
 test('a late noodle specialist moves ahead in a filtered search while every matching map pin remains', async ({ page }) => {
@@ -167,9 +171,11 @@ test('a late noodle specialist moves ahead in a filtered search while every matc
     return route.fulfill({ json: { items: updates === 1 ? [broad] : [specialist, broad], job: { ...job, status: updates === 1 ? 'running' : 'succeeded' }, profileVersion: 1, dataMode: 'live', refreshing: updates === 1 } });
   });
   await page.route(`**/api/jobs/${job.id}`, route => { polls += 1; return route.fulfill({ json: { job: { ...job, status: polls >= 3 ? 'succeeded' : 'running' } } }); });
-  await page.goto('/'); await expect(page.locator('.restaurant-title').first()).toHaveText('Fixture Incidental Review');
+  await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-title').first()).toHaveText('Fixture Incidental Review');
   await page.clock.install();
-  await page.getByRole('combobox', { name: 'Food type', exact: true }).selectOption('noodles');
+  await openAdjustSearch(page); await page.getByRole('combobox', { name: 'Food type', exact: true }).selectOption('noodles');
+  expect(updates).toBe(0);
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect.poll(() => updates).toBe(1);
   for (let count = 1; count <= 3; count++) { await page.clock.fastForward(3100); await expect.poll(() => polls).toBe(count); }
   await expect(page.locator('.restaurant-title').first()).toHaveText('Fixture Noodle Specialist');

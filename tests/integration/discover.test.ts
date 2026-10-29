@@ -1,7 +1,9 @@
 import {beforeEach,it,expect,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),cached:vi.fn(),source:vi.fn(),queue:vi.fn(),profile:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),cached:vi.fn(),source:vi.fn(),queue:vi.fn(),profile:vi.fn(),begin:vi.fn(),save:vi.fn(),feedback:vi.fn(),applyFeedback:vi.fn()}));
 vi.mock('@/server/session',()=>({requireSession:m.session}));
 vi.mock('@/server/repository',()=>({cachedNearby:m.cached,searchPlaces:m.source,queueRefresh:m.queue}));
+vi.mock('@/server/saved-searches',()=>({beginSavedSearch:m.begin,saveSearchSnapshot:m.save,savedSearchSummary:(row:{id:string})=>({id:row.id,title:'Saved noodles',resultCount:1})}));
+vi.mock('@/server/restaurant-feedback',()=>({loadFeedback:m.feedback,applyRestaurantFeedback:m.applyFeedback}));
 import {POST} from '@/app/api/discover/route';
 import {defaultTasteProfile} from '@/server/taste';
 import {demoRestaurants} from '@/server/demo';
@@ -15,6 +17,8 @@ beforeEach(()=>{
  m.session.mockResolvedValue({user:{id:'user'},demo:false,client});
  m.profile.mockResolvedValue({data:{profile:defaultTasteProfile(),answers:{favorites:[]}},error:null});
  m.cached.mockResolvedValue([place]);m.source.mockResolvedValue([place]);m.queue.mockResolvedValue(job);
+ m.begin.mockImplementation(async(_client,_user,search)=>({id:search.savedSearchId??search.searchId,title_status:'fallback'}));m.save.mockImplementation(async(_client,row)=>row);
+ m.feedback.mockResolvedValue([]);m.applyFeedback.mockImplementation(items=>items);
 });
 const discover=(body:unknown)=>POST(new Request('http://localhost:3000/api/discover',{method:'POST',headers:{origin:'http://localhost:3000','Content-Type':'application/json'},body:JSON.stringify(body)}));
 it('keeps live dish-query results even without literal words in the business name',async()=>{
@@ -71,4 +75,17 @@ it('preserves personal ranking for browsing and cuisine-only queries',async()=>{
   const data=await(await discover({...input,query})).json();
   expect(data.items.map((item:{restaurant:{id:string}})=>item.restaurant.id)).toEqual(['incidental-high','listed-medium','listed-low']);
  }
+});
+it('verifies conversation ownership before any paid work can be queued',async()=>{
+ const {HttpError}=await import('@/server/http');m.begin.mockRejectedValueOnce(new HttpError(404,'Search unavailable'));
+ expect((await discover({...input,savedSearchId:'d4f81891-25e3-4bce-90e8-930645bd9d71'})).status).toBe(404);
+ expect(m.queue).not.toHaveBeenCalled();expect(m.cached).not.toHaveBeenCalled();
+});
+it('keeps conversation identity separate from refresh-run identity and persists a server-built base snapshot',async()=>{
+ const conversationId='d4f81891-25e3-4bce-90e8-930645bd9d71';
+ m.applyFeedback.mockImplementation(items=>items.map((item:{score:number})=>({...item,score:item.score+3})));
+ const data=await(await discover({...input,savedSearchId:conversationId,areaLabel:'Private location'})).json();
+ expect(data.savedSearch.id).toBe(conversationId);expect(m.begin.mock.calls[0][2]).toMatchObject({searchId:id,savedSearchId:conversationId});
+ expect(m.queue.mock.calls[0][3]).toBe(id);expect(m.begin.mock.invocationCallOrder[0]).toBeLessThan(m.queue.mock.invocationCallOrder[0]);
+ const snapshot=m.save.mock.calls[0][3];expect(snapshot.jobId).toBe(job.id);expect(snapshot.items[0].score).toBe(data.items[0].score-3);
 });

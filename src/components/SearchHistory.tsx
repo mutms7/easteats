@@ -1,0 +1,8 @@
+import type { SavedSearchSummary } from '@/lib/contracts';
+import { useRef } from 'react';
+
+export default function SearchHistory({ items, currentId, loading, onOpen, onNew }: { items: SavedSearchSummary[]; currentId: string | null; loading: boolean; onOpen: (id: string) => void; onNew: () => void }) {
+  const all = useRef<HTMLDetailsElement>(null);
+  function open(id: string) { if (all.current) all.current.open = false; onOpen(id); }
+  return <section className="search-history" aria-label="Your searches"><div className="search-history-heading"><h2>Your searches</h2><button className="button primary" onClick={onNew}>New search</button></div>{items.length ? <><div className="search-history-strip">{items.slice(0, 5).map(item => <button className="search-history-chip" key={item.id} onClick={() => open(item.id)} aria-current={currentId === item.id ? 'true' : undefined} disabled={loading && currentId === item.id}><span>{item.title}</span><small>{item.resultCount} {item.resultCount === 1 ? 'place' : 'places'}</small></button>)}</div><details ref={all} className="search-history-all"><summary>All searches ({items.length})</summary><ul>{items.map(item => <li key={item.id}><button onClick={() => open(item.id)} aria-current={currentId === item.id ? 'true' : undefined}><span><strong>{item.title}</strong><small>{item.areaLabel} · {item.resultCount} {item.resultCount === 1 ? 'place' : 'places'}</small></span><time dateTime={item.lastOpenedAt}>{new Date(item.lastOpenedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time></button></li>)}</ul></details></> : <p className="small">Your searches will stay here, ready to open again.</p>}</section>;
+}

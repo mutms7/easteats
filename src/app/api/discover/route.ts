@@ -8,11 +8,19 @@ import {isEastAsianRestaurant,isAsianFusionRestaurant} from '@/lib/eligibility';
 import {refreshPlan,enrichmentPlans} from '@/server/refresh-plan';
 import {createHash} from 'node:crypto';
 import {classifyRestaurant,matchRestaurantSearch,restaurantSearchRelevance} from '@/lib/food-taxonomy';
+import {after} from 'next/server';
+import {beginSavedSearch,saveSearchSnapshot,savedSearchSummary} from '@/server/saved-searches';
+import {nameSavedSearch} from '@/server/saved-search-title';
+import {loadFeedback,applyRestaurantFeedback,demoFeedbackState} from '@/server/restaurant-feedback';
+export const maxDuration=60;
 export const POST=endpoint(async request=>{
  const s=await requireSession();const input=discoverInputSchema.parse(await readJson(request));let profile=demoState.profile,answers=s.demo?demoState.answers:null;
  if(!s.demo&&!input.searchId)throw new HttpError(400,'Refresh East Eats and submit the search again.','SEARCH_ID_REQUIRED');
  if(!s.demo){const {data,error}=await s.client!.from('taste_profiles').select('profile,answers').eq('user_id',s.user.id).maybeSingle();if(error)throw error;profile=data?.profile?tasteProfileSchema.parse(data.profile):null;answers=data?.answers;}
  if(!answers)throw new HttpError(409,'Tell us about a favorite restaurant first.','QUESTIONNAIRE_REQUIRED');
+ // Claim/verify ownership before any scrape can start. Conversation identity is
+ // independent from the fresh paid-run identity used by explicit Refresh.
+ const conversation=input.searchId?await beginSavedSearch(s.client,s.user.id,input):null;
  const restaurants=s.demo?demoRestaurants:await cachedNearby(s.client!,input,input.radiusKm);
  const plan=refreshPlan(restaurants,input);
  let job=null,enrichmentJob=null,warning: string|undefined;
@@ -34,7 +42,7 @@ export const POST=endpoint(async request=>{
  // Stable sorting preserves personal ranking inside each listing/review tier.
  // Browsing and cuisine-only searches remain ordered by personal taste.
  const relevance=new Map(selected.map(restaurant=>[restaurant.id,restaurantSearchRelevance(restaurant,input)]));
- const items=rankRestaurants(selected,active,input,input.radiusKm).sort((a,b)=>(relevance.get(b.restaurant.id)??0)-(relevance.get(a.restaurant.id)??0));
+ const baseItems=rankRestaurants(selected,active,input,input.radiusKm).sort((a,b)=>(relevance.get(b.restaurant.id)??0)-(relevance.get(a.restaurant.id)??0));
  if(!s.demo&&job?.status==='succeeded'){
   const candidates=rankRestaurants(eligible,active,input,input.radiusKm).map(item=>item.restaurant);
   const plans=enrichmentPlans(candidates);
@@ -51,5 +59,9 @@ export const POST=endpoint(async request=>{
  }
  const activeJob=(value:typeof job)=>!!value&&['queued','running'].includes(value.status);
  const searchPhase=activeJob(job)?'places':activeJob(enrichmentJob)?'reviews':'complete';
- return json({items,job,enrichmentJob,searchPhase,profileVersion:active.version,dataMode:s.demo?'demo':'live',refreshing:searchPhase!=='complete',warning});
+ const saved=conversation?await saveSearchSnapshot(s.client,conversation,input,{items:baseItems,jobId:job?.id,refreshing:searchPhase!=='complete',warning}):null;
+ if(s.client&&job&&sourceAuthoritative&&sourced.length&&saved?.title_status==='pending'&&baseItems.length)after(async()=>{try{await nameSavedSearch(s.client!,saved.id,input,baseItems);}catch(error){console.error('Saved search naming failed:',error instanceof Error?error.name:'UnknownError');}});
+ const feedback=s.client?await loadFeedback(s.client,s.user.id):demoFeedbackState.items();
+ const items=applyRestaurantFeedback(baseItems,feedback,input);
+ return json({items,job,enrichmentJob,searchPhase,profileVersion:active.version,dataMode:s.demo?'demo':'live',refreshing:searchPhase!=='complete',warning,savedSearch:saved?savedSearchSummary(saved):undefined});
 },true);
