@@ -308,3 +308,23 @@ describe('durable worker',()=>{
     expect(await safeSecretEqual('',undefined)).toBe(false);
   });
 });
+
+it('retains translated reviews when the original text is blank',()=>{
+ const result=normalizePlace({...place,reviews:[{reviewId:'translated',text:'  ',textTranslated:'The noodles are excellent.'}]});
+ expect(result?.reviews[0]?.text).toBe('The noodles are excellent.');
+});
+it('does not launch a paid details scrape without an extraction key',async()=>{
+ const {deps,calls}=dependencies({anthropicKey:undefined},{claim_refresh_jobs:[{...queueJob,run_id:null}]});
+ expect(await processRefreshJobs(deps)).toEqual({processed:0,failed:1});
+ expect(deps.apify.start).not.toHaveBeenCalled();
+ expect(calls.some(c=>c.name==='retry_refresh_job')).toBe(true);
+ expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='succeeded')).toBe(false);
+});
+it('reports model budget exhaustion without advancing past an unanalyzed restaurant',async()=>{
+ const {deps,calls}=dependencies({}, {reserve_usage:null});
+ expect(await processRefreshJobs(deps)).toEqual({processed:0,failed:1});
+ expect(deps.extract).not.toHaveBeenCalled();
+ expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_status==='budget_limited')).toBe(true);
+ expect(calls.some(c=>c.name==='update_refresh_job'&&c.args?.p_offset===1)).toBe(false);
+ expect(calls.some(c=>c.name==='release_refresh_job')).toBe(true);
+});
