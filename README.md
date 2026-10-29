@@ -12,7 +12,7 @@ EastEats is a restaurant discovery app that combines real restaurant listings, r
 - **Food-first rankings:** Compare restaurants using evidence about food, taste fit, value, distance, service, and atmosphere rather than treating Google star ratings as food-quality scores.
 - **East Asian and fusion discovery:** Browse restaurants by cuisine, food type, dish, or search term, with checks to filter out unrelated listings.
 - **Location-based search:** Explore nearby places or search for an address, neighborhood, or city. Optionally save a home location.
-- **Five scores at a glance:** Food, Value, Service, Atmosphere and Taste fit appear in small red circles. Missing review evidence stays Unknown; source excerpts remain in restaurant details.
+- **Evidence-backed scores:** Available Food, Value, Service, Atmosphere and Taste fit scores appear in small red circles. Missing aspects are omitted; places awaiting analysis show a short status message. Source excerpts remain in restaurant details.
 - **Searches that stay with your account:** Return to your most recently opened restaurant list, open an older named search, or explicitly start a new one. Opening a saved list doesn't call Apify or Claude.
 - **Likes and meal feedback:** Like or dislike restaurants to adjust your ranking. Choose Eat here, then share a like, neutral or dislike on your next visit. Liked places stay separate from bookmarks.
 - **Saved restaurants and maps:** Browse results in list and map views, bookmark places, and open directions.
@@ -22,7 +22,7 @@ EastEats is a restaurant discovery app that combines real restaurant listings, r
 
 1. **Create a taste profile.** Sign in and choose one to five favorite restaurants, explain what you enjoy, and select your dining priorities.
 2. **Find restaurants.** Search an area or dish. EastEats displays cached results while a background job fetches fresh listings through Apify.
-3. **Analyze reviews.** Separate enrichment jobs use Claude to extract structured, source-linked information about the food and dining experience.
+3. **Analyze reviews.** After discovery completes, separate enrichment jobs cover up to 120 places in stable batches of 12. Claude extracts structured, source-linked information about the food and dining experience. Each source run remains capped at $1 and existing daily limits still apply; unavailable evidence is never replaced with invented scores.
 4. **Rank results.** A deterministic ranking algorithm combines the extracted signals, your preferences, and proximity. Missing evidence remains neutral rather than being treated as a negative review.
 5. **Reuse the list.** Results and filters stay in your private search history. Claude makes one short naming attempt using recognized food inputs and public restaurant cities. Likes, dislikes and opening history don't require model calls. Refresh runs a new source search only when you ask.
 

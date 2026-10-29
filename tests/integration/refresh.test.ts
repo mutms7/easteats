@@ -16,3 +16,20 @@ it('schedules review enrichment in bounded batches beyond the first twenty',()=>
 });
 it('avoids re-extracting still-fresh evidence',()=>{const r={...demoRestaurants[0],features:{...demoRestaurants[0].features!,updatedAt:new Date(now).toISOString()}};expect(enrichmentPlan([r],now)).toBe(null);});
 it('persists only coarse location for a cold-area search',()=>{expect(refreshPlan([],input,now)).toEqual({kind:'discovery',input:{lat:37.87,lng:-122.27,radiusKm:5,mode:'for-you'}});});
+
+it('keeps pending batches stable as early evidence completes and ranking reverses',()=>{
+ const candidates=Array.from({length:60},(_,i)=>({...demoRestaurants[0],id:'place-'+i,sourceUrl:'https://www.google.com/maps/place/'+String(i).padStart(3,'0'),features:null}));
+ const initial=enrichmentPlans(candidates,now);
+ const completed=new Set(initial[0].urls);
+ const next=candidates.map(r=>completed.has(r.sourceUrl)?{...r,features:{...demoRestaurants[0].features!,updatedAt:new Date(now).toISOString()}}:r).reverse();
+ expect(enrichmentPlans(next,now)).toEqual(initial.slice(1));
+ expect(initial.flatMap(plan=>plan.urls)).toHaveLength(60);
+});
+it('retains a partially completed batch and bounds broad enrichment at 120 places',()=>{
+ const candidates=Array.from({length:130},(_,i)=>({...demoRestaurants[0],id:'place-'+i,sourceUrl:'https://www.google.com/maps/place/'+String(i).padStart(3,'0'),features:null}));
+ const initial=enrichmentPlans(candidates,now);
+ const mixed=candidates.map((r,i)=>i===0?{...r,features:{...demoRestaurants[0].features!,updatedAt:new Date(now).toISOString()}}:r);
+ expect(enrichmentPlans(mixed,now)).toEqual(initial);
+ expect(initial).toHaveLength(10);
+ expect(initial.flatMap(plan=>plan.urls)).toHaveLength(120);
+});

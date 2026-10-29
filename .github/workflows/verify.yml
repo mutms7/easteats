@@ -17,7 +17,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run verify:integration
+      - run: npm run verify:ci
   verify-mobile:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

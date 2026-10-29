@@ -93,7 +93,7 @@ test('manual visit overrides home edits and clear until the next visit', async (
   expect(state.discoveries).toHaveLength(2);
 });
 
-test('food and cuisine filters submit independently and signals never become sliders', async ({ page }, testInfo) => {
+test('food and cuisine filters submit independently and signals never become sliders @smoke', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await fixtures(page, home);
   await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
@@ -106,7 +106,8 @@ test('food and cuisine filters submit independently and signals never become sli
   const card = page.locator('.restaurant-card').first();
   await expect(card.getByRole('img', { name: 'Food: 83 out of 100', exact: true })).toBeVisible();
   await expect(card.getByRole('img', { name: 'Value: 0 out of 100', exact: true })).toBeVisible();
-  await expect(card.getByText('Unknown', { exact: true })).toHaveCount(3);
+  await expect(card.getByText('Unknown', { exact: true })).toHaveCount(0);
+  await expect(card.locator('.score-circle-item')).toHaveCount(2);
   await expect(page.getByRole('slider')).toHaveCount(0);
   await expect(card.locator('.restaurant-tags').getByText('Korean', { exact: true })).toBeVisible();
   await expect(card.locator('.restaurant-tags').getByText('Noodles', { exact: true })).toBeVisible();
