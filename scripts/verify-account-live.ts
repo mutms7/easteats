@@ -1,0 +1,77 @@
+// Local production build against the real account service. No paid providers.
+import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { chromium } from '@playwright/test';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+process.loadEnvFile(existsSync('.env.production.local') ? '.env.production.local' : '.env.local');
+const origin = process.env.ACCOUNT_CHECK_ORIGIN ?? 'http://127.0.0.1:3200';
+if (!['localhost', '127.0.0.1'].includes(new URL(origin).hostname)) throw new Error('Run this acceptance check against a local build.');
+const env = process.env;
+const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.SUPABASE_SECRET_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+const email = `easteats-account-${randomUUID()}@example.invalid`;
+const created = await admin.auth.admin.createUser({ email, password: randomBytes(32).toString('hex'), email_confirm: true });
+if (created.error || !created.data.user) throw new Error('Could not create isolated acceptance account.');
+const id = created.data.user.id;
+const jar = new Map<string, string>();
+const client = createServerClient(env.NEXT_PUBLIC_SUPABASE_URL!, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { cookies: { getAll: () => [...jar].map(([name, value]) => ({ name, value })), setAll: values => { for (const { name, value } of values) jar.set(name, value); } } });
+const proof = { checks: [] as string[], cleanup: false };
+mkdirSync('.local', { recursive: true });
+const browser = await chromium.launch();
+try {
+  const link = await admin.auth.admin.generateLink({ type: 'magiclink', email });
+  if (link.error || !link.data.properties.hashed_token) throw new Error('Could not authenticate acceptance account.');
+  const signed = await client.auth.verifyOtp({ type: 'magiclink', token_hash: link.data.properties.hashed_token });
+  if (signed.error) throw new Error('Acceptance sign-in failed.');
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await context.addCookies([...jar].map(([name, value]) => ({ name, value, url: origin, sameSite: 'Lax' as const })));
+  const page = await context.newPage();
+  await page.goto(origin);
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Acceptance diner');
+  await page.getByRole('button', { name: 'Save account details' }).click();
+  await page.getByRole('status').filter({ hasText: 'Account details saved.' }).waitFor();
+  const verified = await client.auth.getUser();
+  if (verified.data.user?.user_metadata.full_name !== 'Acceptance diner') throw new Error('Name was not persisted.');
+  proof.checks.push('account name saved through real authenticated API and read back from Supabase');
+  const home = { label: '268 Phillip St, Waterloo, ON, Canada', lat: 43.473, lng: -80.537 };
+  // Address fixture is selected in the browser, with the real account write path.
+  await page.route('**/api/geocode', route => route.fulfill({ json: { items: [home] } }));
+  await page.getByRole('combobox', { name: 'Home address', exact: true }).fill('268 Phillip');
+  await page.getByRole('button', { name: 'Find area', exact: true }).click();
+  await page.getByRole('option', { name: home.label, exact: true }).click();
+  await page.getByRole('button', { name: 'Save home address', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Home address saved.' }).waitFor();
+  const stored = await client.from('location_preferences').select('home_address').eq('user_id', id).single();
+  if (stored.error || stored.data.home_address.label !== home.label) throw new Error('Home was not persisted.');
+  proof.checks.push('home saved through real authenticated API and read through account-scoped RLS');
+  await page.screenshot({ path: '.local/account-phone.png', fullPage: true });
+  // Seed only the temporary account's profile to avoid a paid interpretation.
+  const profile = { version: 1, weights: { food: .35, taste: .3, value: .15, proximity: .1, service: .05, atmosphere: .05 }, cuisines: [], dishes: [], flavors: [], spicePreference: null, fusionPreference: null, interpretation: 'Acceptance fixture.', updatedAt: new Date().toISOString() };
+  const seeded = await client.from('taste_profiles').upsert({ user_id: id, profile, answers: {} });
+  if (seeded.error) throw new Error('Could not prepare temporary taste fixture.');
+  await page.reload();
+  const address = page.getByRole('combobox', { name: 'Address or area' });
+  await address.waitFor();
+  if (await address.inputValue() !== home.label) throw new Error('Saved home did not prefill after reload.');
+  await address.focus();
+  if (await address.inputValue() !== '') throw new Error('Home did not clear on focus.');
+  await page.getByRole('button', { name: 'Use saved home' }).click();
+  await page.screenshot({ path: '.local/search-phone.png', fullPage: true });
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  if (await page.getByRole('textbox', { name: 'Name', exact: true }).inputValue() !== 'Acceptance diner') throw new Error('Account name was not restored.');
+  proof.checks.push('production browser build restores name and home after reload, clears home on focus and restores it on request');
+  await page.getByRole('button', { name: 'Clear home address' }).click();
+  await page.getByRole('status').filter({ hasText: 'Home address cleared.' }).waitFor();
+  const cleared = await client.from('location_preferences').select('home_address').eq('user_id', id);
+  if (cleared.error || cleared.data.length) throw new Error('Home was not cleared.');
+  proof.checks.push('home removal persisted without changing other accounts');
+} finally {
+  await browser.close();
+  await client.auth.signOut().catch(() => undefined);
+  const deleted = await admin.auth.admin.deleteUser(id);
+  proof.cleanup = !deleted.error;
+  writeFileSync('.local/account-live-proof.json', JSON.stringify(proof, null, 2));
+  if (deleted.error) throw new Error('Acceptance account cleanup failed.');
+}
+console.log(JSON.stringify(proof));

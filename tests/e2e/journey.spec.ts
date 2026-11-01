@@ -24,5 +24,5 @@ test('phone journey: questionnaire, discovery, saved places, details, reload and
  await page.getByRole('button',{name:'Explore',exact:true}).click();await openAdjustSearch(page); await page.getByRole('combobox',{name:'Cuisine',exact:true}).selectOption('Fusion');await page.getByRole('button',{name:'Search',exact:true}).click();
  await expect(page.getByRole('button',{name:'Miso Meets Masa',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Little Bowl Workshop',exact:true})).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
- await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('link',{name:/Continue with Google/})).toBeVisible();
+ await page.getByRole('button',{name:'Account',exact:true}).click();await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('link',{name:/Continue with Google/})).toBeVisible();
 });

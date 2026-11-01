@@ -107,8 +107,8 @@ test('compact circles are readable graphics, history closes on selection, and bo
   await expect(card.locator('.score-circle-item')).toHaveCount(5);
   await expect(card.getByRole('slider')).toHaveCount(0); await expect(card.locator('details')).toHaveCount(0);
   await expect(page.getByText('Why this place', { exact: true })).toHaveCount(0);
-  await page.locator('.search-history-all summary').click(); await page.locator('.search-history-all button').filter({ hasText: 'Fixture other search' }).click();
-  await expect(page.locator('.search-history-all')).not.toHaveAttribute('open', '');
+  await page.locator('.search-history-chip').filter({ hasText: 'Fixture other search' }).click();
+  await expect(page.locator('.search-history-all')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Fixture other search', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('saved-search-phone.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

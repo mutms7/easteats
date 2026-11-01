@@ -37,7 +37,7 @@ test('saved home autofills location search and clears on focus without deleting 
  // Clearing the input is not an account setting change or a new paid search.
  expect(state.locations).toHaveLength(0);
  expect(state.discoveries).toHaveLength(0);
- await page.getByRole('button',{name:'Search near saved home'}).click();
+ await page.getByRole('button',{name:'Use saved home'}).click();
  expect(state.discoveries).toHaveLength(0);
  await page.getByRole('button',{name:'Start search',exact:true}).click();
  await expect(page.locator('.restaurant-card')).toHaveCount(1);
@@ -76,13 +76,13 @@ test('manual visit overrides home edits and clear until the next visit', async (
   await page.getByRole('option', { name: manual.label, exact: true }).click();
   await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await expect.poll(() => state.discoveries.length).toBe(2);
-  await page.getByRole('button', { name: 'Taste', exact: true }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('button', { name: 'Change home address', exact: true }).click();
   await selectHome(page, 'Second fixture home', changedHome.label);
   await page.getByRole('button', { name: 'Explore', exact: true }).click();
   await expect(page.getByText(`Picked for you · ${manual.label}`, { exact: true })).toBeVisible();
   expect(state.discoveries.at(-1)).toMatchObject({ lat: manual.lat, lng: manual.lng });
-  await page.getByRole('button', { name: 'Taste', exact: true }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('button', { name: 'Clear home address', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Home address cleared.' })).toBeVisible();
   await page.getByRole('button', { name: 'Explore', exact: true }).click();
@@ -140,14 +140,15 @@ test('GPS is requested only by action and overrides home for this visit without 
   await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
   const gpsCalls = () => page.evaluate(() => (window as unknown as { fixtureGPS: { calls: number } }).fixtureGPS.calls);
   expect(await gpsCalls()).toBe(0);
-  await page.getByRole('button', { name: 'Taste', exact: true }).click();
-  await page.getByRole('button', { name: 'Use my current location', exact: true }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'New search', exact: true }).click();
+  await page.getByRole('button', { name: 'Use my location', exact: true }).click();
   expect(await gpsCalls()).toBe(1);
   await page.evaluate(() => (window as unknown as { fixtureGPS: { complete: () => void } }).fixtureGPS.complete());
-  await expect(page.getByRole('status').filter({ hasText: 'Current location is ready for your next search.' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Address or area' })).toHaveValue('Near you');
   expect(state.discoveries).toHaveLength(1);
   expect(state.locations).toHaveLength(0);
-  await page.getByRole('button', { name: 'Explore', exact: true }).click();
   expect(state.discoveries).toHaveLength(1);
   await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await expect.poll(() => state.discoveries.length).toBe(2);

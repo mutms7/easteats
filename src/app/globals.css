@@ -67,3 +67,43 @@
 @media(max-width:560px){.search-history-heading{margin-bottom:10px}.search-history-chip{min-height:54px;padding:8px 12px}.search-history-chip>span{line-height:1.35}.search-history-chip>small{line-height:1.3;margin-top:2px}.restaurant-card .card-photo{height:135px}.restaurant-card .restaurant-photo{height:135px;min-height:135px}}
 .account-delete-confirm{display:flex;align-items:flex-start;gap:12px;margin:24px 0;font-size:16px;font-weight:500}.account-delete-confirm>input{appearance:auto;display:block;flex:0 0 22px;width:22px;height:22px;min-height:22px;padding:0;margin:4px 0 0;accent-color:var(--brand)}
 .site-footer .footer-links{flex-wrap:wrap}
+/* Compact search and account workspace */
+.account-access{margin-left:auto;background:white;flex-shrink:0}
+.account-access[aria-current=page]{border-color:var(--brand);color:var(--brand)}
+.location-search-actions{display:flex;gap:10px;align-items:center;flex-shrink:0}
+.app-shell[data-stage=location] .main-narrow{width:min(100% - 48px,860px);margin-top:24px;min-height:0;margin-bottom:40px}
+.app-shell[data-stage=location] .search-history{margin-bottom:20px;padding-bottom:12px}
+.search-history-strip{overscroll-behavior-x:contain;scroll-padding-inline:2px;scrollbar-color:#B8B8B8 transparent}
+.search-history-strip:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+.search-composer h1{font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.15;letter-spacing:-.045em;margin:0 0 8px;max-width:none}
+.search-intro{font-size:15px;line-height:1.5;color:var(--muted);margin:0 0 18px}
+.search-composer .location-search{margin-top:0}
+.location-search-compact .location-search-row{align-items:flex-start}
+.location-search-compact .location-search-actions>.button{min-height:54px}
+.location-search-compact .use-location{background:white}
+.location-search-compact .location-search-status:empty{display:none}
+.location-search-compact .location-suggestions{position:absolute;top:100%;left:0;right:0}
+.search-composer .new-search-query{margin:20px 0 16px;font-size:14px}
+.search-composer .new-search-query>input{margin-top:6px}
+.search-composer .filters{margin:0;gap:12px}
+.search-composer .filters label{margin-bottom:0}
+.search-composer .filters select{border-radius:12px;min-height:48px}
+.search-composer .new-search-start{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:20px 0 0;padding-top:16px}
+.search-composer .new-search-start>p{font-size:13px;line-height:1.5;margin:0;color:var(--muted);min-width:0}
+.search-composer .new-search-start>.button{flex-shrink:0}
+.search-composer .restore-home{font-size:13px;min-height:44px;margin-left:4px;vertical-align:middle}
+.account-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+.account-heading h1{font-size:clamp(2rem,4vw,3rem);margin:0}
+.account-details,.account-preferences{padding:24px;border:1px solid var(--line);border-radius:20px;background:white}
+.account-details h2,.account-preferences h2{font-size:21px;margin-bottom:18px}
+.account-details fieldset{border:0;padding:0;margin:0;display:grid;gap:14px}
+.account-details label{margin:0}
+.account-details input{margin-top:6px}
+.account-details .small{margin-bottom:0;font-size:13px}
+.account-details .button{justify-self:start}
+.account-details>p{margin:14px 0 0}
+.account-screen .home-address{margin:20px 0}
+.account-preferences{margin-top:20px}
+.account-actions{display:flex;justify-content:space-between;align-items:center;margin-top:24px;gap:16px}
+@media(max-width:700px){.location-search-compact .location-search-row{flex-wrap:wrap;gap:10px}.location-search-compact .location-input-shell{flex-basis:100%}.location-search-compact .location-search-actions{width:100%}.location-search-compact .location-search-actions>.button{flex:1;min-height:46px;width:auto}.location-search-compact .location-submit{order:1}.location-search-compact .use-location{order:0}}
+@media(max-width:560px){.app-shell[data-stage=location] .main-narrow{width:calc(100% - 40px);margin-top:12px;margin-bottom:28px}.app-shell[data-stage=location] .search-history{margin-bottom:16px;padding-bottom:8px}.search-history-heading h2{font-size:16px}.search-history-heading>.button{min-height:44px;padding:9px 15px}.search-composer h1{font-size:28px}.search-intro{font-size:14px;margin-bottom:14px}.search-composer .new-search-query{margin:16px 0 14px}.search-composer .filters{gap:10px}.search-composer .filters select{font-size:16px;min-height:46px;padding:10px 26px 10px 12px;margin-top:4px}.search-composer .new-search-start{margin-top:16px;padding-top:14px;align-items:stretch;flex-direction:column;gap:10px}.search-composer .new-search-start>.button{width:100%}.account-access{padding:10px 16px;min-height:44px}.account-details,.account-preferences{padding:20px 16px}.account-heading{margin-bottom:20px}}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import type { Location } from '@/lib/contracts';
 
 export type LocationSuggestion = Location & {
@@ -26,7 +26,7 @@ function kindLabel(kind: LocationSuggestion['kind']): string {
   return 'Location';
 }
 
-export default function LocationSearch({ proximity, onSelect, onQueryChange, initialValue = '', clearInitialOnFocus = false, label = 'Address or area', hint = 'Street address, intersection, neighborhood, or city.' }: { proximity?: Location | null; onSelect: (location: LocationSuggestion) => void; onQueryChange?: () => void; initialValue?: string; clearInitialOnFocus?: boolean; label?: string; hint?: string }) {
+export default function LocationSearch({ proximity, onSelect, onQueryChange, initialValue = '', clearInitialOnFocus = false, label = 'Address or area', hint = 'Street address, intersection, neighborhood, or city.', compact = false, actions }: { proximity?: Location | null; onSelect: (location: LocationSuggestion) => void; onQueryChange?: (value: string) => void; initialValue?: string; clearInitialOnFocus?: boolean; label?: string; hint?: string; compact?: boolean; actions?: ReactNode }) {
   const id = useId();
   const inputId = `location-input-${id}`;
   const listId = `location-options-${id}`;
@@ -101,7 +101,7 @@ export default function LocationSearch({ proximity, onSelect, onQueryChange, ini
 
   function change(value: string) {
     prefilled.current = false;
-    onQueryChange?.();
+    onQueryChange?.(value);
     cancel(); queryRef.current = value; selectedLabel.current = null;
     setQuery(value); setItems([]); setActive(-1); setError('');
     setStatus(value.trim().length >= 3 ? 'waiting' : 'idle'); setOpen(value.trim().length >= 3);
@@ -116,6 +116,8 @@ export default function LocationSearch({ proximity, onSelect, onQueryChange, ini
     event.preventDefault();
     if (query.trim().length < 3) { setStatus('error'); setError('Enter at least three characters to find an address or area.'); input.current?.focus(); return; }
     if (timer.current) clearTimeout(timer.current);
+    // Submitting a prefilled address shouldn't clear it as a side effect of focus.
+    prefilled.current = false;
     setOpen(true); input.current?.focus(); void lookup(query.trim());
   }
   function navigate(event: KeyboardEvent<HTMLInputElement>) {
@@ -129,12 +131,12 @@ export default function LocationSearch({ proximity, onSelect, onQueryChange, ini
   const expanded = open && query.trim().length >= 3;
   const progress = status === 'waiting' || status === 'loading';
   const announcement = progress ? 'Finding matching addresses…' : status === 'ready' ? items.length ? `${items.length} matching locations. Choose one, or use the arrow keys and Enter.` : 'No matching locations. Try adding a city, postal code, or nearby intersection.' : '';
-  return <form ref={container} className="location-search" onSubmit={submit}>
-    <label htmlFor={inputId}>{label}</label>
-    <p className="location-search-hint" id={hintId}>{hint}</p>
+  return <form ref={container} className={`location-search${compact ? ' location-search-compact' : ''}`} onSubmit={submit}>
+    <label className={compact ? 'sr-only' : undefined} htmlFor={inputId}>{label}</label>
+    {hint && <p className="location-search-hint" id={hintId}>{hint}</p>}
     <div className="location-search-row"><div className={`location-input-shell ${expanded ? 'is-open' : ''}`}>
       <span className="location-input-icon"><Pin /></span>
-      <input ref={input} id={inputId} role="combobox" type="text" autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="search" maxLength={150} value={query} aria-autocomplete="list" aria-expanded={expanded} aria-controls={expanded ? listId : undefined} aria-activedescendant={expanded && active >= 0 ? `${listId}-${active}` : undefined} aria-describedby={`${hintId} ${statusId}`} aria-busy={progress} onKeyDown={navigate} onChange={event => change(event.target.value)} onFocus={() => { if (prefilled.current) { change(''); return; } if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onClick={() => { if (prefilled.current) { change(''); return; } if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onBlur={event => { if (event.relatedTarget instanceof Node && !container.current?.contains(event.relatedTarget)) { setOpen(false); setActive(-1); } }} placeholder="123 King St N, Waterloo" />
+      <input ref={input} id={inputId} role="combobox" type="text" autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="search" maxLength={150} value={query} aria-autocomplete="list" aria-expanded={expanded} aria-controls={expanded ? listId : undefined} aria-activedescendant={expanded && active >= 0 ? `${listId}-${active}` : undefined} aria-describedby={hint ? `${hintId} ${statusId}` : statusId} aria-busy={progress} onKeyDown={navigate} onChange={event => change(event.target.value)} onFocus={() => { if (prefilled.current) { change(''); return; } if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onClick={() => { if (prefilled.current) { change(''); return; } if (query.trim().length >= 3 && selectedLabel.current !== query) setOpen(true); }} onBlur={event => { if (event.relatedTarget instanceof Node && !container.current?.contains(event.relatedTarget)) { setOpen(false); setActive(-1); } }} placeholder={compact ? "Enter an address or area" : "Street address, neighborhood, or city"} />
       {query && <button className="location-clear" type="button" aria-label="Clear location" onMouseDown={event => event.preventDefault()} onClick={() => { change(''); input.current?.focus(); }}>×</button>}
       {expanded && <div className="location-suggestions"><ul id={listId} role="listbox" aria-label="Matching locations">{items.map((item, index) => {
         const parts = item.label.split(',').map(part => part.trim());
@@ -143,7 +145,7 @@ export default function LocationSearch({ proximity, onSelect, onQueryChange, ini
         const kind = kindLabel(item.kind);
         return <li id={`${listId}-${index}`} key={`${item.id ?? `${item.lat},${item.lng}`}-${index}`} role="option" tabIndex={-1} aria-label={item.label} aria-description={item.kind === 'street' ? 'Street-level location, not a specific building.' : item.kind === 'area' ? 'Area center, not a specific building.' : kind} aria-selected={active === index} onMouseEnter={() => setActive(index)} onMouseDown={event => event.preventDefault()} onClick={() => choose(item)}><span className="location-option-icon"><Pin kind={item.kind} /></span><span className="location-option-copy"><strong>{primary}</strong>{secondary && <span>{secondary}</span>}<span className="location-kind">{kind}{item.kind === 'street' ? ' · Street-level location' : item.kind === 'area' ? ' · Area center' : ''}</span></span></li>;
       })}</ul>{(progress || status === 'ready' && !items.length || status === 'error') && <div className="location-dropdown-feedback">{status === 'error' ? 'Location search is unavailable. Your address is still here; try Find area again.' : progress ? <><span className="location-loading-dot" aria-hidden="true" />Finding matching addresses…</> : 'No matches yet. Add a city or postal code and try again.'}</div>}</div>}
-    </div><button className="button location-submit" type="submit" disabled={status === 'loading'}>{status === 'loading' ? 'Finding…' : 'Find area'}</button></div>
+    </div><div className="location-search-actions">{actions}<button className={`button location-submit${compact ? ' primary' : ''}`} type="submit" disabled={status === 'loading'}>{status === 'loading' ? 'Finding…' : 'Find area'}</button></div></div>
     <p id={statusId} className={`location-search-status ${status === 'error' ? 'is-error' : ''}`} role={status === 'error' ? 'alert' : 'status'} aria-live={status === 'error' ? 'assertive' : 'polite'} aria-atomic="true">{status === 'error' ? error : announcement}</p>
   </form>;
 }

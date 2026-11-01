@@ -1,10 +1,10 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 
-const auth=vi.hoisted(()=>({signedIn:true,demo:false,userId:'current-user',headers:new Headers(),requireSession:vi.fn(),signOut:vi.fn(),revoke:vi.fn(),deleteUser:vi.fn(),adminClient:vi.fn(),userClient:vi.fn(),oauth:vi.fn(),exchange:vi.fn(),cookieValues:new Map<string,string>(),setCookie:vi.fn(),deleteCookie:vi.fn()}));
+const auth=vi.hoisted(()=>({signedIn:true,demo:false,userId:'current-user',headers:new Headers(),requireSession:vi.fn(),signOut:vi.fn(),updateUser:vi.fn(),revoke:vi.fn(),deleteUser:vi.fn(),adminClient:vi.fn(),userClient:vi.fn(),oauth:vi.fn(),exchange:vi.fn(),cookieValues:new Map<string,string>(),setCookie:vi.fn(),deleteCookie:vi.fn()}));
 vi.mock('next/headers',()=>({headers:async()=>auth.headers,cookies:async()=>({get:(name:string)=>auth.cookieValues.has(name)?{value:auth.cookieValues.get(name)}:undefined,set:auth.setCookie,delete:auth.deleteCookie})}));
 vi.mock('@/server/session',()=>({requireSession:auth.requireSession}));
 vi.mock('@/server/supabase',()=>({adminClient:auth.adminClient,userClient:auth.userClient}));
-import {DELETE} from '@/app/api/account/route';
+import {DELETE,PUT} from '@/app/api/account/route';
 import {GET as login} from '@/app/auth/login/route';
 import {GET as callback} from '@/app/auth/callback/route';
 import {HttpError} from '@/server/http';
@@ -14,8 +14,9 @@ beforeEach(()=>{
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL','https://project.supabase.co');vi.stubEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY','test-public-key');vi.stubEnv('APP_URL','https://east-eats.example');
   auth.requireSession.mockImplementation(async()=>{
     if(!auth.signedIn)throw new HttpError(401,'Sign in to continue.','SIGN_IN_REQUIRED');
-    return{user:{id:auth.userId},demo:auth.demo,client:auth.demo?null:{auth:{signOut:auth.signOut}}};
+    return{user:{id:auth.userId,email:'fixture@example.invalid'},demo:auth.demo,client:auth.demo?null:{auth:{signOut:auth.signOut,updateUser:auth.updateUser}}};
   });
+  auth.updateUser.mockResolvedValue({data:{user:{id:auth.userId,email:'fixture@example.invalid',user_metadata:{full_name:'Fixture diner'}}},error:null});
   auth.signOut.mockResolvedValue({error:null});auth.revoke.mockResolvedValue({error:null});auth.deleteUser.mockResolvedValue({error:null});
   auth.adminClient.mockReturnValue({auth:{admin:{signOut:auth.revoke,deleteUser:auth.deleteUser}}});
   auth.oauth.mockResolvedValue({data:{url:'https://accounts.google.com/oauth'},error:null});auth.exchange.mockResolvedValue({error:null});
@@ -97,4 +98,34 @@ describe('safe account-deletion login return',()=>{
     expect(response.headers.get('location')).toBe('https://east-eats.example/?auth=failed');expect(auth.cookieValues.has('east-eats-return-to')).toBe(false);
     if(!hasCode)expect(auth.exchange).not.toHaveBeenCalled();
   });
+});
+
+const update=(body:unknown={name:'Fixture diner',email:'fixture@example.invalid'},origin='https://east-eats.example')=>PUT(new Request('https://east-eats.example/api/account',{method:'PUT',headers:{'Content-Type':'application/json',Origin:origin},body:JSON.stringify(body)}));
+describe('PUT /api/account',()=>{
+ it('saves only current-user display data through the scoped auth client',async()=>{
+  const response=await update({name:'  Fixture diner  ',email:'fixture@example.invalid'});
+  expect(response.status).toBe(200);expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+  expect(auth.updateUser).toHaveBeenCalledExactlyOnceWith({data:{full_name:'Fixture diner'}},{emailRedirectTo:'https://east-eats.example/auth/callback'});
+  expect((await response.json()).user).toEqual({id:'current-user',email:'fixture@example.invalid',name:'Fixture diner',pendingEmail:null});
+  expect(auth.adminClient).not.toHaveBeenCalled();
+ });
+ it('reports a pending email without claiming the confirmed email changed',async()=>{
+  auth.updateUser.mockResolvedValue({data:{user:{id:'current-user',email:'fixture@example.invalid',new_email:'new@example.invalid',user_metadata:{full_name:'Fixture diner'}}},error:null});
+  const response=await update({name:'Fixture diner',email:'new@example.invalid'});
+  expect(auth.updateUser.mock.calls[0][0]).toEqual({data:{full_name:'Fixture diner'},email:'new@example.invalid'});
+  const result=await response.json();expect(result.user.email).toBe('fixture@example.invalid');expect(result.user.pendingEmail).toBe('new@example.invalid');expect(result.message).toContain('confirmation');
+ });
+ it.each([{name:'',email:'fixture@example.invalid'},{name:'Fixture',email:'invalid'},{name:'Fixture',email:'fixture@example.invalid',id:'victim'}])('rejects invalid or account-targeting input: %j',async body=>{
+  expect((await update(body)).status).toBe(400);expect(auth.updateUser).not.toHaveBeenCalled();
+ });
+ it('requires sign-in, rejects demo accounts and foreign origins',async()=>{
+  auth.signedIn=false;expect((await update()).status).toBe(401);
+  auth.signedIn=true;auth.demo=true;expect((await update()).status).toBe(403);
+  auth.demo=false;expect((await update(undefined,'https://other.example')).status).toBe(403);
+  expect(auth.updateUser).not.toHaveBeenCalled();
+ });
+ it('preserves an honest failure and hides provider diagnostics',async()=>{
+  auth.updateUser.mockResolvedValue({data:{user:null},error:new Error('private provider diagnostic')});
+  const response=await update();expect(response.status).toBe(503);expect(await response.text()).not.toContain('private provider diagnostic');
+ });
 });
