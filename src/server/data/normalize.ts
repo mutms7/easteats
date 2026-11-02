@@ -30,7 +30,7 @@ export function normalizePlace(raw: unknown): { restaurant: Restaurant; reviews:
   const reviews: Review[] = [];
   const seen = new Set<string>();
   for (const v of Array.isArray(p.reviews) ? p.reviews.slice(0, 40) : []) {
-    const r = obj(v), body = text(r.text ?? r.textTranslated, 4000);
+    const r = obj(v), body = text(r.text, 4000) || text(r.textTranslated, 4000);
     if (!body) continue;
     const date = text(r.publishedAtDate ?? r.publishedAt, 100);
     const reviewId = text(r.reviewId, 300) || `${id}:${hash(`${body}|${date}`)}`;

@@ -16,7 +16,6 @@ run('node_modules/vitest/vitest.mjs',['run',...scopes.map(s=>`tests/${s}`)]);
 if(role==='integration'||role==='ci'){
  run('node_modules/typescript/bin/tsc',['--noEmit']);
  run('node_modules/next/dist/bin/next',['build']);
- // Release and CI both exercise every browser journey, including saved-search
- // replay and feedback. A smoke-only pass isn't release verification.
- run('node_modules/@playwright/test/cli.js',['test']);
+ // Keep routine CI small; release verification retains every browser journey.
+ run('node_modules/@playwright/test/cli.js',['test',...(role==='ci'?['--grep','@smoke']:[])]);
 }

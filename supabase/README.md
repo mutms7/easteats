@@ -30,7 +30,7 @@ Each worker claims one job with a five-minute lease and 330-second queue visibil
 
 Manual searches carry a fresh UUID and use a durable key based on kind plus that UUID. Replays return the same job even after failure or success. Noninteractive work without an identity retains the previous TTL policy. The search API requires an identity, so it cannot silently reuse a previous manual search's area cache. See [the incident and acceptance evidence](../docs/search-and-map-fix.md).
 
-Feature hashes include source reviews, model, and extraction prompt version. Identical evidence reuses cached features without another model call. The worker can still ingest restaurant details if the extraction key or budget is unavailable; missing evidence remains neutral.
+Feature hashes include source reviews, model, and extraction prompt version. Identical evidence reuses cached features without another model call. Details jobs stop before a paid scrape when the extraction key is missing. If the model budget is unavailable, the job stops at the unanalyzed restaurant and reports incomplete analysis. Missing evidence remains neutral.
 
 ## Verification boundary
 

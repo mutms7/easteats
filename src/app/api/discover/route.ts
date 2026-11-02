@@ -46,14 +46,15 @@ export const POST=endpoint(async request=>{
  if(!s.demo&&job?.status==='succeeded'){
   const candidates=rankRestaurants(eligible,active,input,input.radiusKm).map(item=>item.restaurant);
   const plans=enrichmentPlans(candidates);
-  for(const [index,plan] of plans.entries()){
-   const hex=createHash('sha256').update(`${input.searchId}:reviews:${index}`).digest('hex');
-   const batchId=index===0?input.searchId!:`${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-8${hex.slice(17,20)}-${hex.slice(20,32)}`;
+  for(const plan of plans){
+   const hex=createHash('sha256').update(`${input.searchId}:reviews:${JSON.stringify(plan.urls)}`).digest('hex');
+   const batchId=`${hex.slice(0,8)}-${hex.slice(8,12)}-4${hex.slice(13,16)}-8${hex.slice(17,20)}-${hex.slice(20,32)}`;
    try{
     const next=await queueRefresh(s.client!,'details',plan,batchId);
-    // Track the first active batch. Each subsequent completed batch makes
-    // the next one eligible for client polling without launching a duplicate.
+    // Track the first active batch; stable URL-based IDs keep later polls
+    // attached to the same paid jobs as evidence changes ranking.
     if(next && !enrichmentJob && ['queued','running'].includes(next.status))enrichmentJob=next;
+    if(!next || ['failed','uncertain','budget_limited'].includes(next.status))warning='Places are available, but review analysis is incomplete. Try Refresh later.';
    }catch{warning='Places are available, but some review updates could not start right now.';}
   }
  }

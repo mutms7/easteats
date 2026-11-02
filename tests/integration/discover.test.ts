@@ -89,3 +89,22 @@ it('keeps conversation identity separate from refresh-run identity and persists 
  expect(m.queue.mock.calls[0][3]).toBe(id);expect(m.begin.mock.invocationCallOrder[0]).toBeLessThan(m.queue.mock.invocationCallOrder[0]);
  const snapshot=m.save.mock.calls[0][3];expect(snapshot.jobId).toBe(job.id);expect(snapshot.items[0].score).toBe(data.items[0].score-3);
 });
+
+it('keeps later review job identities as earlier batches complete and rank order changes',async()=>{
+ const places=Array.from({length:25},(_,i)=>({...place,id:`place-${i}`,sourceUrl:`https://www.google.com/maps/place/${String(i).padStart(3,'0')}`}));
+ m.source.mockResolvedValue(places);
+ m.queue.mockImplementation(async(_client,kind)=>kind==='discovery'?{...job,status:'succeeded'}:{...job,kind:'details'});
+ await discover({...input,query:''});
+ const initial=m.queue.mock.calls.filter(call=>call[1]==='details').map(call=>({plan:call[2],id:call[3]}));
+ m.queue.mockClear();
+ m.source.mockResolvedValue(places.map((r,i)=>i<12?{...r,features:{...demoRestaurants[0].features!,updatedAt:new Date().toISOString()}}:r).reverse());
+ await discover({...input,query:''});
+ const remaining=m.queue.mock.calls.filter(call=>call[1]==='details').map(call=>({plan:call[2],id:call[3]}));
+ expect(remaining).toEqual(initial.slice(1));
+});
+it.each(['failed','uncertain','budget_limited'])('reports incomplete enrichment when a details job is %s',async status=>{
+ m.queue.mockResolvedValueOnce({...job,status:'succeeded'}).mockResolvedValueOnce({...job,kind:'details',status});
+ const data=await(await discover(input)).json();
+ expect(data.warning).toContain('review analysis is incomplete');
+ expect(data.refreshing).toBe(false);
+});

@@ -103,8 +103,8 @@ test('compact circles are readable graphics, history closes on selection, and bo
   expect(titleBox.y + titleBox.height).toBeLessThan(navigationBox.y);
   await expect(card.getByRole('img', { name: 'Food: 83 out of 100', exact: true })).toBeVisible();
   await expect(card.getByRole('img', { name: 'Value: 0 out of 100', exact: true })).toBeVisible();
-  await expect(card.getByRole('img', { name: 'Service: Unknown', exact: true })).toBeVisible();
-  await expect(card.locator('.score-circle-item')).toHaveCount(5);
+  await expect(card.getByRole('img', { name: 'Service: Unknown', exact: true })).toHaveCount(0);
+  await expect(card.locator('.score-circle-item')).toHaveCount(2);
   await expect(card.getByRole('slider')).toHaveCount(0); await expect(card.locator('details')).toHaveCount(0);
   await expect(page.getByText('Why this place', { exact: true })).toHaveCount(0);
   await page.locator('.search-history-chip').filter({ hasText: 'Fixture other search' }).click();

@@ -33,11 +33,14 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
   const { rpc, apify }=deps;
   const jobs=await rpcValue<QueueJob[]>(rpc,'claim_refresh_jobs',{p_limit:1});
   let processed=0,failed=0;
-  for (const job of jobs) {
+  jobLoop: for (const job of jobs) {
     const favoriteSearch=job.kind==='favorite-search';
     const discovery=job.kind==='discovery';
     const businessSearch=favoriteSearch||discovery;
     try {
+      // A details job cannot complete analysis without an extraction provider.
+      // Fail before launching a paid scrape rather than silently discarding it.
+      if (!businessSearch && !deps.anthropicKey) throw new Error('Review extraction is not configured');
       if (!job.run_id) {
         const reservation=await rpcValue<string|null>(rpc,'reserve_usage',{p_provider:'apify',p_operation:`refresh:${job.id}`,p_reserved_usd:1});
         if (!reservation) { await update(rpc,job.id,'budget_limited',{p_error:'Refresh budget reached'}); continue; }
@@ -79,6 +82,13 @@ export async function processRefreshJobs(deps: WorkerDependencies): Promise<{ pr
               // Refuse unknown model prices before making a paid call.
               extractionCost({model:deps.extractModel,inputTokens:0,outputTokens:0});
               const reservation=await rpcValue<string|null>(rpc,'reserve_usage',{p_provider:'anthropic',p_operation:`extract:${job.id}:${offset}:${crypto.randomUUID()}`,p_reserved_usd:deps.extractModel==='claude-haiku-4-5-20251001'?.50:.10});
+              if (!reservation) {
+                // Keep the cursor on this restaurant so it is never reported
+                // as analyzed when the model budget prevented extraction.
+                await update(rpc,job.id,'budget_limited',{p_error:'Review analysis budget reached'});
+                failed++;
+                continue jobLoop;
+              }
               if (reservation) {
                 let totalCost=0,usageReports=0;
                 // Hold the full reservation until every concurrent chunk has completed.
