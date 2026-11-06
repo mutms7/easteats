@@ -107,3 +107,39 @@
 .account-actions{display:flex;justify-content:space-between;align-items:center;margin-top:24px;gap:16px}
 @media(max-width:700px){.location-search-compact .location-search-row{flex-wrap:wrap;gap:10px}.location-search-compact .location-input-shell{flex-basis:100%}.location-search-compact .location-search-actions{width:100%}.location-search-compact .location-search-actions>.button{flex:1;min-height:46px;width:auto}.location-search-compact .location-submit{order:1}.location-search-compact .use-location{order:0}}
 @media(max-width:560px){.app-shell[data-stage=location] .main-narrow{width:calc(100% - 40px);margin-top:12px;margin-bottom:28px}.app-shell[data-stage=location] .search-history{margin-bottom:16px;padding-bottom:8px}.search-history-heading h2{font-size:16px}.search-history-heading>.button{min-height:44px;padding:9px 15px}.search-composer h1{font-size:28px}.search-intro{font-size:14px;margin-bottom:14px}.search-composer .new-search-query{margin:16px 0 14px}.search-composer .filters{gap:10px}.search-composer .filters select{font-size:16px;min-height:46px;padding:10px 26px 10px 12px;margin-top:4px}.search-composer .new-search-start{margin-top:16px;padding-top:14px;align-items:stretch;flex-direction:column;gap:10px}.search-composer .new-search-start>.button{width:100%}.account-access{padding:10px 16px;min-height:44px}.account-details,.account-preferences{padding:20px 16px}.account-heading{margin-bottom:20px}}
+
+/* Search radius and browser preferences share the existing form surfaces. */
+.radius-control{min-width:0;font-size:13px;font-weight:600}
+.radius-control>label{display:block;margin:0}
+.radius-control select{margin-top:6px;font-size:14px;min-height:46px;border-radius:12px;width:100%}
+.custom-radius{margin-top:12px}
+.custom-radius label{display:block;font-size:13px;margin-bottom:6px}
+.custom-radius input{min-height:46px}
+.custom-radius p{font-size:12px;font-weight:400;margin:6px 0 0;line-height:1.5}
+.radius-error{color:#A5210B}
+.custom-radius input[aria-invalid=true]{border-color:#A5210B}
+.options-access{margin-left:auto;min-height:44px}
+.options-access+.account-access{margin-left:0}
+.options-form .account-preferences:first-child{margin-top:0}
+.options-form .radius-control{margin-top:20px;max-width:320px}
+.options-form select{margin-bottom:10px}
+.options-form .option-toggle{min-height:44px;display:flex;align-items:center;gap:12px;font-size:16px}
+.option-toggle input{appearance:auto;width:22px;height:22px;min-height:22px;flex:0 0 22px;margin:0;accent-color:var(--brand)}
+.options-form>.small{margin-top:20px}
+@media(max-width:560px){.options-access,.options-access+.account-access{padding:10px 12px;font-size:13px}.site-header:has(.options-access){flex-wrap:wrap}.site-header:has(.options-access) .wordmark{margin-right:auto}.options-access{margin-left:0}.radius-control select{font-size:16px}.custom-radius input{font-size:16px}}
+/* Sign-in food carousel */
+.food-carousel-window{position:relative;isolation:isolate;height:100%;overflow:hidden;border-radius:28px;background:var(--ink)}
+.food-carousel-track{height:100%;display:flex;flex-direction:column;animation:food-scroll-up 60s linear infinite;will-change:transform}
+.food-slide{position:relative;flex:0 0 100%;min-height:0;overflow:hidden;pointer-events:none}
+.food-slide img{object-fit:cover;object-position:center}
+.food-carousel-shade{position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,.78) 100%)}
+.food-carousel-caption{position:absolute;left:28px;right:24px;bottom:84px;z-index:3;color:white;pointer-events:none}
+.food-carousel-caption span{font-size:12px;font-weight:500;letter-spacing:.02em}
+.food-carousel-caption p{font-size:clamp(24px,2.6vw,36px);font-weight:750;letter-spacing:-.035em;line-height:1.15;margin:6px 0 0;text-wrap:balance}
+.food-carousel-controls{position:absolute;right:24px;bottom:20px;z-index:3;display:flex;justify-content:flex-end;color:white}
+.food-carousel-controls button{display:grid;place-items:center;width:44px;height:44px;flex-shrink:0;border:1px solid rgba(255,255,255,.5);border-radius:50%;background:rgba(0,0,0,.48);color:white;transition:background-color .15s}
+.food-carousel-controls button:hover{background:rgba(255,255,255,.2)}
+.food-carousel-controls button:focus-visible{outline-color:white;outline-offset:3px}
+@keyframes food-scroll-up{from{transform:translateY(0)}to{transform:translateY(-600%)}}
+@media(max-width:700px){.food-carousel-window{border-radius:20px}.food-carousel-caption{left:20px;bottom:74px}.food-carousel-caption p{font-size:26px}.food-carousel-controls{left:20px;right:16px;bottom:14px}.food-slide img{object-position:center 48%}}
+@media(prefers-reduced-motion:reduce){.food-carousel-track{animation:none;transform:none;will-change:auto}.food-carousel-controls button{transition:none}}

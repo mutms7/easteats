@@ -7,6 +7,9 @@ import HomeAddress from './HomeAddress';
 import AccountDetails, { type AccountUser } from './AccountDetails';
 import MatchInsights from './MatchInsights';
 import SearchHistory from './SearchHistory';
+import RadiusControl from './RadiusControl';
+import SearchOptions from './SearchOptions';
+import { DEFAULT_PREFERENCES, PREFERENCES_KEY, parsePreferences, type SearchPreferences, type DistanceUnits } from '@/lib/preferences';
 import RestaurantActions from './RestaurantActions';
 import { classifyRestaurant, CUISINES, FOOD_TYPES } from '@/lib/food-taxonomy';
 import HomepageDemo from './HomepageDemo';
@@ -18,7 +21,7 @@ import { authNotice, distanceLabel, favoriteFromRestaurant, goalDraftKey, mergeD
 
 const RestaurantMap = dynamic(() => import('./RestaurantMap'), { ssr: false, loading: () => <div className="empty">Loading map…</div> });
 type Session = { user: AccountUser | null; configured: boolean; demo: boolean; dataMode: 'live' | 'demo'; profile: TasteProfile | null; answers: TasteInput | null; personalized?:boolean; warning?:string; homeAddress?: SavedLocation | null };
-type Stage = 'loading' | 'login' | 'questionnaire' | 'interpretation' | 'location' | 'explore' | 'saved' | 'account';
+type Stage = 'loading' | 'login' | 'questionnaire' | 'interpretation' | 'location' | 'explore' | 'saved' | 'account' | 'options';
 type FavoriteSearch = { id: number; searchId: string; query: string; city: string; startedAt: number; phase: 'searching' | 'complete' | 'stopped' };
 type FavoriteSearchJob = { search: FavoriteSearch; job: RefreshJob };
 type DiscoveryIntent = { id: string; input: DiscoverInput & { searchId: string }; startedAt: number };
@@ -58,8 +61,8 @@ function PriceInfo({ restaurant }: { restaurant: Restaurant }) {
 }
 
 type Filters = { radiusKm: number; mode: 'for-you' | 'fusion'; cuisine: string; foodType: string; query: string; maxPrice: number };
-function SearchFilters({ filters, onChange }: { filters: Filters; onChange: (patch: Partial<Filters>) => void }) {
-  return <div className="filters"><label>Distance<select value={filters.radiusKm} onChange={event => onChange({ radiusKm: Number(event.target.value) })}><option value="2">About 1 mile</option><option value="5">About 3 miles</option><option value="15">About 9 miles</option><option value="50">About 30 miles</option></select></label><label>Price<select value={filters.maxPrice} onChange={event => onChange({ maxPrice: Number(event.target.value) })}><option value="4">Any price</option><option value="1">$</option><option value="2">Up to $$</option><option value="3">Up to $$$</option></select></label><label>Cuisine<select value={filters.cuisine} onChange={event => onChange({ cuisine: event.target.value })}><option value="">All cuisines</option>{CUISINES.map(cuisine => <option value={cuisine} key={cuisine}>{cuisine}</option>)}</select></label><label>Food type<select value={filters.foodType} onChange={event => onChange({ foodType: event.target.value })}><option value="">Any food</option>{FOOD_TYPES.map(food => <option value={food.id} key={food.id}>{food.label}</option>)}</select></label></div>;
+function SearchFilters({ filters, onChange, units, onValidityChange }: { filters: Filters; onChange: (patch: Partial<Filters>) => void; units: DistanceUnits; onValidityChange: (valid: boolean) => void }) {
+  return <div className="filters"><RadiusControl key={units} value={filters.radiusKm} units={units} onChange={radiusKm => onChange({ radiusKm })} onValidityChange={onValidityChange} /><label>Price<select value={filters.maxPrice} onChange={event => onChange({ maxPrice: Number(event.target.value) })}><option value="4">Any price</option><option value="1">$</option><option value="2">Up to $$</option><option value="3">Up to $$$</option></select></label><label>Cuisine<select value={filters.cuisine} onChange={event => onChange({ cuisine: event.target.value })}><option value="">All cuisines</option>{CUISINES.map(cuisine => <option value={cuisine} key={cuisine}>{cuisine}</option>)}</select></label><label>Food type<select value={filters.foodType} onChange={event => onChange({ foodType: event.target.value })}><option value="">Any food</option>{FOOD_TYPES.map(food => <option value={food.id} key={food.id}>{food.label}</option>)}</select></label></div>;
 }
 
 function Details({ item, actions, onClose }: { item: RankedRestaurant; actions: ReactNode; onClose: () => void }) {
@@ -100,6 +103,11 @@ export default function EastEatsApp() {
   stageRef.current = stage;
   const locationOperation = useRef(0);
   const accountReturn = useRef<Stage>('location');
+  const optionsReturn = useRef<Stage>('location');
+  const [preferences, setPreferences] = useState<SearchPreferences>({ ...DEFAULT_PREFERENCES });
+  const preferencesRef = useRef(preferences); preferencesRef.current = preferences;
+  const [radiusValid, setRadiusValid] = useState(true);
+  const [preferenceWarning, setPreferenceWarning] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [goal, setGoal] = useState<TasteGoal>('balanced');
@@ -123,6 +131,9 @@ export default function EastEatsApp() {
   const [addressField, setAddressField] = useState({ label: '', clear: false, version: 0 });
   const locationChoice = useRef<'home' | 'manual' | 'gps' | null>(null);
   const [filters, setFilters] = useState({ radiusKm: 5, mode: 'for-you' as 'for-you' | 'fusion', cuisine: '', foodType: '', query: '', maxPrice: 4 });
+  useEffect(() => {
+    try { const saved = parsePreferences(localStorage.getItem(PREFERENCES_KEY)); setPreferences(saved); preferencesRef.current = saved; setFilters(current => ({ ...current, radiusKm: saved.radiusKm })); } catch { /* Defaults work without browser storage. */ }
+  }, []);
   const [queryDraft, setQueryDraft] = useState('');
   const [results, setResults] = useState<DiscoverResponse | null>(null);
   const [pendingResults, setPendingResults] = useState<DiscoverResponse | null>(null);
@@ -163,7 +174,7 @@ export default function EastEatsApp() {
     setBusy(value => value === 'discover' ? '' : value);
   }
   function applySnapshot(search: SavedSearch, dataMode: 'live' | 'demo' = 'live') {
-    const input = search.input; displayedInput.current = input;
+    const input = search.input; displayedInput.current = input; setRadiusValid(true);
     displayedLocation.current = { lat: input.lat, lng: input.lng };
     currentSearchId.current = search.id; setCurrentSearch(search); rememberSearch(search);
     setLocation({ lat: input.lat, lng: input.lng }); setAreaLabel(search.areaLabel); locationChoice.current = 'manual';
@@ -188,7 +199,7 @@ export default function EastEatsApp() {
     locationOperation.current += 1;
     snapshotVersion.current += 1; historyRequest.current?.abort(); stopDiscovery();
     currentSearchId.current = null; setCurrentSearch(null); setResults(null); appliedResults.current = null; setSelected(null);
-    setFilters({ radiusKm: 5, mode: 'for-you', cuisine: '', foodType: '', query: '', maxPrice: 4 }); setQueryDraft('');
+    setRadiusValid(true); setFilters({ radiusKm: preferencesRef.current.radiusKm, mode: 'for-you', cuisine: '', foodType: '', query: '', maxPrice: 4 }); setQueryDraft('');
     displayedInput.current = null;
     setLocation(homeAddress); setAreaLabel(homeAddress?.label ?? 'Nearby'); locationChoice.current = homeAddress ? 'home' : null;
     setAddressField(current => ({ label: homeAddress?.label ?? '', clear: Boolean(homeAddress), version: current.version + 1 }));
@@ -420,7 +431,7 @@ export default function EastEatsApp() {
   function beginDiscovery(value: Location, nextFilters = filters, options: { savedSearchId?: string; areaLabel?: string } = {}) {
     snapshotVersion.current += 1; historyRequest.current?.abort();
     const id = crypto.randomUUID(); const label = options.areaLabel ?? areaLabel;
-    const intent: DiscoveryIntent = { id, input: { lat: value.lat, lng: value.lng, ...nextFilters, searchId: id, areaLabel: label, ...(options.savedSearchId ? { savedSearchId: options.savedSearchId } : {}) }, startedAt: Date.now() };
+    const intent: DiscoveryIntent = { id, input: { lat: value.lat, lng: value.lng, ...nextFilters, variety: preferences.variety, searchId: id, areaLabel: label, ...(options.savedSearchId ? { savedSearchId: options.savedSearchId } : {}) }, startedAt: Date.now() };
     if (!options.savedSearchId) { currentSearchId.current = null; setCurrentSearch(null); }
     displayedInput.current = intent.input; displayedLocation.current = { lat: value.lat, lng: value.lng };
     activeDiscovery.current = intent; setDiscoveryIntent(intent); setDiscoveryJob(null); setDiscoveryPhase('places');
@@ -429,7 +440,7 @@ export default function EastEatsApp() {
   function updateFilters(patch: Partial<typeof filters>) { setFilters(current => ({ ...current, ...patch })); }
   function runAdjustedSearch(event: FormEvent) {
     event.preventDefault();
-    if (!location) return;
+    if (!location || !radiusValid) return;
     const next = { ...filters, query: queryDraft.trim() }; setFilters(next); beginDiscovery(location, next);
   }
   function refreshCurrentSearch() {
@@ -450,6 +461,21 @@ export default function EastEatsApp() {
   function prepareLocation(value: Location, label: string, source: 'manual' | 'gps' | 'home' = 'manual') {
     locationOperation.current += 1; locationChoice.current = source; setBusy(current => current === 'location' ? '' : current); setLocation(value); setAreaLabel(label); setError('');
     setAddressField(current => ({ label, clear: source === 'home', version: current.version + (source === 'manual' ? 0 : 1) }));
+  }
+  function openOptions() {
+    if (stage === 'options') return;
+    optionsReturn.current = stage; locationOperation.current += 1;
+    snapshotVersion.current += 1; historyRequest.current?.abort();
+    setBusy(current => current === 'location' || current === 'history' ? '' : current);
+    setStage('options');
+  }
+  function saveOptions(value: SearchPreferences) {
+    if (value.units !== preferences.units) setRadiusValid(true);
+    setPreferences(value); preferencesRef.current = value;
+    try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify(value)); setPreferenceWarning(''); }
+    catch { setPreferenceWarning('Your options work for this visit, but browser storage is unavailable, so they may reset when you reload.'); }
+    if (!displayedInput.current) { setFilters(current => ({ ...current, radiusKm: value.radiusKm })); setRadiusValid(true); }
+    setNotice('Search options saved. They apply to your next search.');
   }
   function openAccount() {
     if (stage === 'account') return;
@@ -527,11 +553,11 @@ export default function EastEatsApp() {
   }
   const closeDetails = useCallback(() => setSelected(null), []);
 
-  const mainNavigation = session?.user && profile && stage !== 'loading' && stage !== 'login' && stage !== 'location' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' ? 'page' : undefined} onClick={returnToExplore}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>;
+  const mainNavigation = session?.user && profile && stage !== 'loading' && stage !== 'login' && stage !== 'location' && stage !== 'options' && <nav className="bottom-nav" aria-label="Main navigation"><button aria-current={stage === 'explore' ? 'page' : undefined} onClick={returnToExplore}>Explore</button><button aria-current={stage === 'saved' ? 'page' : undefined} onClick={() => setStage('saved')}>Saved{savedPlaces.length ? ` (${savedPlaces.length})` : ''}</button><button aria-current={stage === 'questionnaire' || stage === 'interpretation' ? 'page' : undefined} onClick={() => setStage('questionnaire')}>Taste</button></nav>;
 
   return <div className="app-shell" data-stage={stage}>
     <a href="#main" className="skip-link">Skip to content</a>
-    <header className="site-header"><a className="wordmark" href="/" aria-label="East Eats home">east eats<span className="wordmark-dot">.</span></a><span className="header-note">find food you’ll love</span>{stage === 'login' && <a className="button header-signin" href="/auth/login" aria-disabled={!session?.configured} onClick={event => { if (!session?.configured) event.preventDefault(); }}>Sign in</a>}{session?.user && <button className="button account-access" aria-current={stage === 'account' ? 'page' : undefined} onClick={openAccount}>Account</button>}{mainNavigation}</header>
+    <header className="site-header"><a className="wordmark" href="/" aria-label="East Eats home">east eats<span className="wordmark-dot">.</span></a><span className="header-note">find food you’ll love</span>{stage === 'login' && <a className="button header-signin" href="/auth/login" aria-disabled={!session?.configured} onClick={event => { if (!session?.configured) event.preventDefault(); }}>Sign in</a>}{session?.user && <button className="button options-access" aria-current={stage === 'options' ? 'page' : undefined} onClick={openOptions}>Options</button>}{session?.user && <button className="button account-access" aria-current={stage === 'account' ? 'page' : undefined} onClick={openAccount}>Account</button>}{mainNavigation}</header>
     {session?.dataMode === 'demo' && session.user && <div className="demo-banner">Demo mode · Fictional restaurants and sample recommendations. No live scraping.</div>}
     <main id="main" className={stage === 'login' ? 'main-login' : stage === 'explore' || stage === 'saved' ? 'main-wide' : 'main-narrow'}>
       {error && <div className="message error" role="alert">{error}<button className="text-button" onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
@@ -551,19 +577,21 @@ export default function EastEatsApp() {
 
       {stage === 'interpretation' && profile && <section><p className="eyebrow">Your taste profile</p><h1>{personalized ? 'Here’s what we’re hearing.' : 'Your answers are saved.'}</h1><p className="taste-goal-summary"><span>Right now:</span><strong>{TASTE_GOAL_OPTIONS.find(option => option.value === goal)?.label}</strong></p><div className="field-note interpretation"><p>{personalized ? profile.interpretation : 'Your priority is applied. We could not finish learning from your favorites yet. You can retry or start exploring.'}</p></div><form onSubmit={submitTaste}><label htmlFor="correction">Anything we missed?</label><textarea id="correction" rows={3} maxLength={1500} value={correction} onChange={event => setCorrection(event.target.value)} placeholder="Actually, I prefer mild food and I’d travel farther for great dumplings." /><div className="inline-actions"><button className="button" disabled={busy === 'taste'}>{busy === 'taste' ? 'Updating…' : personalized ? 'Update my tastes' : 'Retry personalization'}</button><button className="button primary" type="button" onClick={returnToExplore}>Let’s find somewhere</button></div></form><button className="text-button" onClick={() => setStage('questionnaire')}>Edit my favorites</button></section>}
 
+      {stage === 'options' && <><SearchOptions key={`${preferences.units}:${preferences.radiusKm}:${preferences.variety}`} value={preferences} onSave={saveOptions} onBack={() => setStage(optionsReturn.current)} />{preferenceWarning && <p className="message" role="status">{preferenceWarning}</p>}</>}
+
       {stage === 'account' && session?.user && <section className="account-screen"><div className="account-heading"><h1>Your account</h1><button className="button" onClick={() => setStage(accountReturn.current)}>Back</button></div><AccountDetails key={session.user.id} user={session.user} demo={session.dataMode === 'demo'} onChange={user => setSession(current => current?.user?.id === user.id ? { ...current, user } : current)} /><HomeAddress value={homeAddress} onChange={updateHome} /><section className="account-preferences"><h2>Taste preferences</h2><p className="small">Update your favorites and what matters most when you eat out.</p><button className="button" onClick={() => setStage('questionnaire')}>Edit taste preferences</button></section><div className="account-actions"><button className="button" onClick={logout} disabled={busy === 'logout'}>{busy === 'logout' ? 'Signing out…' : 'Sign out'}</button><a className="text-button" href="/delete-account">Delete account</a></div></section>}
 
       {stage === 'location' && <section className="search-composer" aria-labelledby="search-heading"><h1 id="search-heading">Where are we eating?</h1><p className="search-intro">Find food near home or somewhere new.</p>
         {session?.dataMode === 'demo' && <div className="city-shortcuts">{BAY_AREAS.map(area => <button key={area.label} className="button" onClick={() => { prepareLocation(area, area.label); setAddressField(current => ({ label: area.label, clear: false, version: current.version + 1 })); }}>{area.label}</button>)}</div>}
         <LocationSearch key={addressField.version} proximity={location} initialValue={addressField.label} clearInitialOnFocus={addressField.clear} compact hint="" actions={<button type="button" className="button use-location" onClick={locate} disabled={busy === 'location'}>{busy === 'location' ? 'Locating…' : 'Use my location'}</button>} onQueryChange={value => { setAddressField(current => ({ ...current, label: value, clear: false })); locationOperation.current += 1; setBusy(current => current === 'location' ? '' : current); setLocation(null); locationChoice.current = null; }} onSelect={area => prepareLocation(area, area.label)} />
-        <label className="new-search-query" htmlFor="new-food-query">What are you craving? <span className="muted">(optional)</span><input id="new-food-query" value={queryDraft} maxLength={150} onChange={event => setQueryDraft(event.target.value)} placeholder="Noodles, dumplings, a restaurant name..." /></label><SearchFilters filters={filters} onChange={updateFilters} />
-        <div className="new-search-start"><p aria-live="polite">{location ? `Search near ${areaLabel}` : 'Choose an address or use your location.'}{homeAddress && locationChoice.current !== 'home' && <button className="text-button restore-home" onClick={() => prepareLocation(homeAddress, homeAddress.label, 'home')}>Use saved home</button>}</p><button className="button primary" disabled={!location || busy === 'location'} onClick={() => { if (location) { const next = { ...filters, query: queryDraft.trim() }; setFilters(next); beginDiscovery(location, next); } }}>Start search</button></div>{results && <button className="text-button" onClick={() => setStage('explore')}>Back to results</button>}</section>}
+        <label className="new-search-query" htmlFor="new-food-query">What are you craving? <span className="muted">(optional)</span><input id="new-food-query" value={queryDraft} maxLength={150} onChange={event => setQueryDraft(event.target.value)} placeholder="Noodles, dumplings, a restaurant name..." /></label><SearchFilters filters={filters} onChange={updateFilters} units={preferences.units} onValidityChange={setRadiusValid} />
+        <div className="new-search-start"><p aria-live="polite">{location ? `Search near ${areaLabel}` : 'Choose an address or use your location.'}{homeAddress && locationChoice.current !== 'home' && <button className="text-button restore-home" onClick={() => prepareLocation(homeAddress, homeAddress.label, 'home')}>Use saved home</button>}</p><button className="button primary" disabled={!location || busy === 'location' || !radiusValid} onClick={() => { if (location && radiusValid) { const next = { ...filters, query: queryDraft.trim() }; setFilters(next); beginDiscovery(location, next); } }}>Start search</button></div>{results && <button className="text-button" onClick={() => setStage('explore')}>Back to results</button>}</section>}
 
       {stage === 'explore' && <section><div className="explore-heading"><div><p className="eyebrow">Picked for you · {areaLabel}</p><h1 tabIndex={-1} className="current-search-title">{currentSearch?.title ?? 'Your search'}</h1></div></div><div className="search-toolbar"><p className="small">{results ? `${results.items.length} ${results.items.length === 1 ? 'place' : 'places'}` : 'Finding places...'}</p><div className="inline-actions"><button className="button" disabled={!location || busy === 'discover'} onClick={refreshCurrentSearch}>Refresh search</button><button className="button mobile-map-toggle" onClick={() => setShowMap(!showMap)} aria-pressed={showMap}>{showMap ? 'Show list' : 'Show map'}</button></div></div>
-        <details key={snapshotVersion.current} className="search-adjust"><summary>Adjust search</summary><p className="small">Search with these options creates a new list.</p><form className="adjust-search-form" onSubmit={runAdjustedSearch}><label htmlFor="food-search">Search dishes or restaurant names</label><input id="food-search" value={queryDraft} onChange={event => setQueryDraft(event.target.value)} maxLength={150} placeholder="Noodles, dumplings, a restaurant name..." /><SearchFilters filters={filters} onChange={updateFilters} /><button className="button primary" type="submit">Search</button></form><p className="small area-search-help">Looking for a street, campus, or city? <button className="text-button" onClick={newSearch}>Change area</button></p></details>
+        <details key={snapshotVersion.current} className="search-adjust"><summary>Adjust search</summary><p className="small">Search with these options creates a new list.</p><form className="adjust-search-form" onSubmit={runAdjustedSearch}><label htmlFor="food-search">Search dishes or restaurant names</label><input id="food-search" value={queryDraft} onChange={event => setQueryDraft(event.target.value)} maxLength={150} placeholder="Noodles, dumplings, a restaurant name..." /><SearchFilters filters={filters} onChange={updateFilters} units={preferences.units} onValidityChange={setRadiusValid} /><button className="button primary" type="submit" disabled={!radiusValid}>Search</button></form><p className="small area-search-help">Looking for a street, campus, or city? <button className="text-button" onClick={newSearch}>Change area</button></p></details>
 
         {discoveryPhase === 'places' && <p className="refresh-status" role="status">Searching Google Maps for places in {areaLabel}… Results and map pins appear as they arrive.</p>}{discoveryPhase === 'reviews' && <p className="refresh-status" role="status">Places are ready. We’re checking food details to improve your recommendations.</p>}{pendingResults && <button className="button refresh-button" onClick={() => { appliedResults.current = pendingResults; setResults(pendingResults); setPendingResults(null); }}>Fresh details are ready. Update results</button>}
-        <div className={`discovery-grid ${showMap ? 'show-map' : ''}`}><div className="restaurant-list" aria-busy={busy === 'discover'}>{busy === 'discover' && !results && <div className="empty" role="status">Finding your next spot…</div>}{results?.items.length === 0 && discoveryPhase === 'complete' && <div className="empty"><Bowl /><h2>No matching places found</h2><p>Try a wider distance, a different cuisine, or change the area.</p></div>}{results?.items.map((item, index) => <article className="restaurant-card" key={item.restaurant.id}><div className="card-photo"><RestaurantPhoto restaurant={item.restaurant} /><span className="list-position" aria-label={`Recommendation ${index + 1}`}>{index + 1}</span></div><div className="card-content"><RestaurantTags restaurant={item.restaurant} /><button className="restaurant-title" onClick={() => setSelected(item)}>{item.restaurant.name}</button><p className="small">{item.restaurant.city} · {<PriceInfo restaurant={item.restaurant} />} · {distanceLabel(item.distanceKm)}</p><div className="field-note"><MatchInsights item={item} /></div><div className="card-footer"><span className="small card-source"><span>Google: {item.restaurant.googleRating ?? 'unrated'}{item.restaurant.googleRating !== null ? '/5' : ''}</span><span>Checked {new Date(item.restaurant.fetchedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span></div>{actionsFor(item.restaurant)}</div></article>)}</div><aside className="map-column" aria-label="Map view">{location && <RestaurantMap items={results?.items ?? []} center={location} selectedId={selected?.restaurant.id} searching={discoveryPhase === 'places'} onSelect={setSelected} onSearchArea={area => chooseLocation(area, 'Selected map area')} />}</aside></div></section>}
+        <div className={`discovery-grid ${showMap ? 'show-map' : ''}`}><div className="restaurant-list" aria-busy={busy === 'discover'}>{busy === 'discover' && !results && <div className="empty" role="status">Finding your next spot…</div>}{results?.items.length === 0 && discoveryPhase === 'complete' && <div className="empty"><Bowl /><h2>No matching places found</h2><p>Try a wider distance, a different cuisine, or change the area.</p></div>}{results?.items.map((item, index) => <article className="restaurant-card" key={item.restaurant.id}><div className="card-photo"><RestaurantPhoto restaurant={item.restaurant} /><span className="list-position" aria-label={`Recommendation ${index + 1}`}>{index + 1}</span></div><div className="card-content"><RestaurantTags restaurant={item.restaurant} /><button className="restaurant-title" onClick={() => setSelected(item)}>{item.restaurant.name}</button><p className="small">{item.restaurant.city} · {<PriceInfo restaurant={item.restaurant} />} · {distanceLabel(item.distanceKm, preferences.units)}</p><div className="field-note"><MatchInsights item={item} /></div><div className="card-footer"><span className="small card-source"><span>Google: {item.restaurant.googleRating ?? 'unrated'}{item.restaurant.googleRating !== null ? '/5' : ''}</span><span>Checked {new Date(item.restaurant.fetchedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span></div>{actionsFor(item.restaurant)}</div></article>)}</div><aside className="map-column" aria-label="Map view">{location && <RestaurantMap items={results?.items ?? []} center={location} selectedId={selected?.restaurant.id} searching={discoveryPhase === 'places'} onSelect={setSelected} onSearchArea={area => chooseLocation(area, 'Selected map area')} />}</aside></div></section>}
 
       {stage === 'saved' && <section><p className="eyebrow">For another day</p><h1>Your places.</h1><section aria-labelledby="liked-places-heading"><h2 className="saved-section-heading" id="liked-places-heading">Liked places</h2>{feedback.some(item => item.sentiment === 'like') ? <div className="saved-grid">{feedback.filter(item => item.sentiment === 'like').map(item => collectionCard(item.restaurant))}</div> : <p className="liked-empty">Like a restaurant to keep it here and help shape future recommendations.</p>}</section><section aria-labelledby="saved-places-heading"><h2 className="saved-section-heading" id="saved-places-heading">Saved places</h2>{savedPlaces.length ? <div className="saved-grid">{savedPlaces.map(collectionCard)}</div> : <p className="liked-empty">Save a place to bookmark it. Saving and liking are separate.</p>}</section><button className="button" onClick={returnToExplore}>Back to your search</button></section>}
 

@@ -5,7 +5,7 @@ import {adminClient} from './supabase';
 import {HttpError} from './http';
 import {createHash,randomUUID} from 'node:crypto';
 export async function cachedNearby(client:SupabaseClient,location:Location,radiusKm:number):Promise<Restaurant[]> {
- const {data,error}=await client.rpc('nearby_restaurants',{p_lat:location.lat,p_lng:location.lng,p_radius_km:radiusKm});if(error)throw error;
+ const {data,error}=await client.rpc('nearby_restaurants',{p_lat:location.lat,p_lng:location.lng,p_radius_km:Math.max(.5,radiusKm)});if(error)throw error;
  return (data||[]).map((r:unknown)=>restaurantSchema.parse(r));
 }
 export async function cachedSearch(client:SupabaseClient,query:string,city:string):Promise<Restaurant[]> {

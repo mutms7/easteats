@@ -1,0 +1,13 @@
+'use client';
+
+import { useState, type FormEvent } from 'react';
+import RadiusControl from './RadiusControl';
+import { DEFAULT_PREFERENCES, type SearchPreferences } from '@/lib/preferences';
+
+export default function SearchOptions({ value, onSave, onBack }: { value: SearchPreferences; onSave: (preferences: SearchPreferences) => void; onBack: () => void }) {
+  const [draft, setDraft] = useState(value);
+  const [valid, setValid] = useState(true);
+  const [resetVersion, setResetVersion] = useState(0);
+  function submit(event: FormEvent) { event.preventDefault(); if (valid) onSave(draft); }
+  return <section className="options-screen"><div className="account-heading"><h1>Search options</h1><button className="button" onClick={onBack}>Back</button></div><p className="lede">Make the next search feel more like you.</p><form className="options-form" onSubmit={submit}><section className="account-preferences"><h2>Distance</h2><label htmlFor="distance-units">Distance units</label><select id="distance-units" value={draft.units} onChange={event => { setDraft(current => ({ ...current, units: event.target.value as SearchPreferences['units'] })); setValid(true); }}><option value="metric">Metric (kilometres)</option><option value="imperial">Imperial (miles)</option></select><p className="small">Changing units keeps the same physical search area.</p><RadiusControl key={`${draft.units}:${resetVersion}`} label="Default search distance" value={draft.radiusKm} units={draft.units} onChange={radiusKm => setDraft(current => ({ ...current, radiusKm }))} onValidityChange={setValid} /><p className="small">Your default applies when you start a new search. Distances are measured in a straight line from your chosen location.</p></section><section className="account-preferences"><h2>Recommendations</h2><label className="option-toggle"><input type="checkbox" checked={draft.variety} onChange={event => setDraft(current => ({ ...current, variety: event.target.checked }))} /><span>Mix up close matches</span></label><p className="small">Give similarly strong matches a chance to appear first on each new search. Food scores stay based on review evidence. Turn this off to keep the strongest match first.</p></section><p className="small">These options are saved in this browser. Existing saved searches keep their original search options.</p><div className="inline-actions"><button className="button primary" disabled={!valid}>Save options</button><button type="button" className="button" onClick={() => { setDraft({ ...DEFAULT_PREFERENCES }); setValid(true); setResetVersion(current => current + 1); }}>Reset to defaults</button></div></form></section>;
+}

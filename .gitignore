@@ -13,3 +13,6 @@ coverage/
 .vercel/
 supabase/.temp/
 supabase/.branches/
+
+.playwright-cli/
+output/playwright/

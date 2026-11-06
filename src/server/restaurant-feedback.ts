@@ -1,3 +1,4 @@
+import { exploreRecommendations } from './taste/exploration';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { feedbackReasonSchema, feedbackSentimentSchema, restaurantSchema, type DiscoverInput, type FeedbackItem, type MealCheckin, type RankedRestaurant, type Restaurant } from '@/lib/contracts';
@@ -112,7 +113,7 @@ function currentFeedback(feedback: FeedbackItem[]): Map<string, FeedbackItem> {
 export function applyRestaurantFeedback(items: RankedRestaurant[], feedback: FeedbackItem[], input?: DiscoverInput): RankedRestaurant[] {
   const votes = currentFeedback(feedback);
   const related = [...votes.values()].filter(vote => vote.sentiment !== 'neutral' && (!vote.reason || vote.reason === 'food' || vote.reason === 'overall')).map(vote => ({ vote, traits: supportedTraits(vote.restaurant) }));
-  return items.map((item, index) => {
+  const rows = items.map((item, index) => {
     const vote = votes.get(item.restaurant.id);
     const exact = vote?.sentiment === 'like' ? 4 : vote?.sentiment === 'dislike' ? -20 : 0;
     const traits = supportedTraits(item.restaurant);
@@ -129,7 +130,9 @@ export function applyRestaurantFeedback(items: RankedRestaurant[], feedback: Fee
     const baseScore = Math.max(0, Math.min(100, Number.isFinite(base) ? base : 50));
     const score = adjustment === 0 ? baseScore : Math.round(Math.max(0, Math.min(100, baseScore + adjustment)) * 100) / 100;
     return { item: { ...item, baseScore, feedbackAdjustment: Math.round((score - baseScore) * 100) / 100, score }, tier: input ? restaurantSearchRelevance(item.restaurant, input) : 0, index };
-  }).sort((a, b) => b.tier - a.tier || b.item.score - a.item.score || a.index - b.index).map(row => row.item);
+  }).sort((a, b) => b.tier - a.tier || b.item.score - a.item.score || a.item.distanceKm - b.item.distanceKm || a.item.restaurant.id.localeCompare(b.item.restaurant.id) || a.index - b.index);
+  const adjusted = rows.map(row => row.item);
+  return input ? exploreRecommendations(adjusted, input, new Set([...votes.values()].filter(vote => vote.sentiment === 'dislike').map(vote => vote.restaurantId)), new Map(rows.map(row => [row.item.restaurant.id, row.tier]))) : adjusted;
 }
 
 // Explicit, process-local fictional demo state. Never passed to a live DB client.

@@ -10,3 +10,6 @@ playwright-report
 supabase/.temp
 supabase/.branches
 docs
+
+.playwright-cli
+output/playwright

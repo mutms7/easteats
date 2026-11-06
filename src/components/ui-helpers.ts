@@ -1,3 +1,4 @@
+import { formatDistance, type DistanceUnits } from '@/lib/preferences';
 import { tasteInputSchema, type DiscoverResponse, type Favorite, type RankedRestaurant, type Restaurant } from '@/lib/contracts';
 import { parseTasteGoal, type TasteGoal } from '@/lib/taste-goals';
 
@@ -33,7 +34,7 @@ export function parseDraft(raw: string | null): Favorite[] | null {
   } catch { return null; }
 }
 export function priceLabel(price: number | null, priceText?: string | null): string { return priceText || (price ? '$'.repeat(price) : 'See menu for prices'); }
-export function distanceLabel(km: number): string { return `${(km * 0.621371).toFixed(1)} mi`; }
+export function distanceLabel(km: number, units: DistanceUnits = 'metric'): string { return formatDistance(km, units); }
 export function safeExternalUrl(value: string | null): string | undefined {
   if (!value) return undefined;
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.toString() : undefined; } catch { return undefined; }
