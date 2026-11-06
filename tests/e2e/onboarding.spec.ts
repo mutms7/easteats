@@ -50,16 +50,16 @@ test('tutorial can be skipped, stays dismissed after reload, and can be reopened
   await page.route('**/api/session', route => route.fulfill({ json: { user: { id: 'tutorial-user' }, profile: fixtureProfile, tutorialCompleted: completed, dataMode: 'live' } }));
   await page.route('**/api/tutorial', route => { completed = true; return route.fulfill({ json: { completed } }); });
   await page.goto('/');
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Take a closer look' })).toBeVisible();
   await page.getByRole('button', { name: 'Skip tutorial' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.tutorial-coach')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Fixture noodle night' })).toBeVisible();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.tutorial-coach')).toHaveCount(0);
   await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('button', { name: 'Show tutorial' }).click();
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Choose where to eat' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Take a closer look' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fixture noodle night' })).toBeVisible();
 });
 
 test('Back and Forward retain sign-in, Eat here shows a visible confirmation, and saved radius stays intact', async ({ page }) => {

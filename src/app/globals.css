@@ -152,10 +152,22 @@
 @keyframes search-spin{to{transform:rotate(360deg)}}
 .confirmation-toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:90;width:min(560px,calc(100% - 32px));background:var(--ink);color:white;border-radius:12px;padding:18px 22px;box-shadow:0 8px 30px #0003;display:flex;align-items:center;gap:12px}
 .confirmation-toast button{color:white;margin-left:auto}
-.tutorial-panel{background:var(--paper,#fff);color:var(--ink);border-radius:18px;padding:32px;width:min(540px,calc(100% - 32px));max-height:90dvh;overflow:auto;box-shadow:0 20px 80px #0003}
-.tutorial-panel h2{font-size:30px;line-height:1.15;margin:16px 0}
-.tutorial-panel p{line-height:1.65}
 .eat-here-help{margin:0 0 12px;font-size:12px;color:var(--muted)}
 @media(prefers-reduced-motion:reduce){.search-spinner{animation:none;border-style:dotted}}
 
-.tutorial-backdrop{align-items:center;justify-content:center}
+
+
+.tutorial-target{outline:3px solid var(--brand)!important;outline-offset:6px;border-radius:8px;scroll-margin-block:180px}
+.tutorial-coach{position:fixed;z-index:80;padding:0;background:#fff;border:2px solid var(--brand);border-radius:16px;box-shadow:0 10px 40px #0002;max-height:calc(100dvh - 32px);overflow:visible;color:var(--ink)}
+.tutorial-coach-content{padding:20px;max-height:calc(100dvh - 36px);overflow:auto;border-radius:14px}
+.tutorial-coach .eyebrow{font-size:12px;margin:0 0 8px}
+.tutorial-coach h2{font-size:23px;line-height:1.2;margin:0 0 10px;letter-spacing:-.025em}
+.tutorial-coach p{font-size:14px;line-height:1.55;margin:0 0 12px}
+.tutorial-coach-actions{display:flex;gap:4px 8px;align-items:center;flex-wrap:wrap}
+.tutorial-coach-actions .button{min-height:44px;padding:9px 15px}
+.tutorial-coach-actions .text-button{font-size:13px}
+.tutorial-pointer{position:absolute;width:10px;height:10px;border-left:2px solid var(--brand);border-top:2px solid var(--brand);background:#fff;pointer-events:none}
+.tutorial-coach[data-side=below] .tutorial-pointer{top:-6px;left:26px;transform:rotate(45deg)}
+.tutorial-coach[data-side=above] .tutorial-pointer{bottom:-6px;left:26px;transform:rotate(225deg)}
+.tutorial-coach[data-side=right] .tutorial-pointer{left:-6px;top:26px;transform:rotate(-45deg)}
+@media(max-width:560px){.tutorial-coach-content{padding:16px}.tutorial-coach h2{font-size:20px}.tutorial-coach p{font-size:13px}.tutorial-target{outline-offset:3px}}
