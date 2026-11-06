@@ -1,3 +1,4 @@
+import { goToQuizStep } from './quiz-helpers';
 import { openAdjustSearch } from './search-fixtures';
 import {test,expect} from '@playwright/test';
 test('login gate protects data and rejects cross-site writes @smoke',async({request})=>{
@@ -9,19 +10,20 @@ test('phone journey: questionnaire, discovery, saved places, details, reload and
  await expect(page.getByRole('link',{name:/Continue with Google/})).toBeVisible();
  await expect(page.getByRole('heading',{name:/Where do you/})).toHaveCount(0);
  await page.getByRole('button',{name:'Try the demo'}).click();
- await expect(page.getByRole('heading',{name:/Where do you.*love eating/})).toBeVisible();
+ await goToQuizStep(page,1);
  await page.getByRole('textbox',{name:'Restaurant name'}).fill('Little Bowl');await page.getByRole('button',{name:'Find restaurant',exact:true}).click();
  await page.getByRole('button',{name:'Add favorite',exact:true}).click();
+ await goToQuizStep(page,2);
  await page.getByRole('button',{name:'Great value',exact:true}).click();
- await page.reload();await expect(page.getByRole('group',{name:'Little Bowl Workshop'})).toBeVisible();
- await page.getByRole('button',{name:'Find my next meal'}).click();
+ await page.reload();await goToQuizStep(page,2);await expect(page.getByRole('group',{name:'Little Bowl Workshop'})).toBeVisible();
+ await goToQuizStep(page,3);await page.getByRole('button',{name:'Find my next meal'}).click();
  await expect(page.getByRole('heading',{name:'Your answers are saved.'})).toBeVisible();
  await page.getByRole('button',{name:'Let’s find somewhere'}).click();await page.getByRole('button',{name:'Berkeley',exact:true}).click();await page.getByRole('button',{name:'Start search',exact:true}).click();
  await expect(page.locator('.current-search-title')).toBeVisible();await expect(page.getByRole('button',{name:'Little Bowl Workshop',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Save Little Bowl Workshop',exact:true}).click();
  await page.getByRole('button',{name:/^Saved \(1\)$/}).click();await expect(page.getByRole('heading',{name:'Your places.'})).toBeVisible();
  await page.getByRole('button',{name:'Little Bowl Workshop',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
- await page.getByRole('button',{name:'Explore',exact:true}).click();await openAdjustSearch(page); await page.getByRole('combobox',{name:'Cuisine',exact:true}).selectOption('Fusion');await page.getByRole('button',{name:'Search',exact:true}).click();
+ await page.getByRole('button',{name:'Explore',exact:true}).click();await openAdjustSearch(page); await page.getByRole('combobox',{name:'Cuisine',exact:true}).selectOption('Fusion');await page.getByRole('combobox',{name:'Distance',exact:true}).selectOption('5');await page.getByRole('button',{name:'Search',exact:true}).click();
  await expect(page.getByRole('button',{name:'Miso Meets Masa',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Little Bowl Workshop',exact:true})).toHaveCount(0);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
  await page.getByRole('button',{name:'Account',exact:true}).click();await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('link',{name:/Continue with Google/})).toBeVisible();

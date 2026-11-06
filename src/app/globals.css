@@ -143,3 +143,19 @@
 @keyframes food-scroll-up{from{transform:translateY(0)}to{transform:translateY(-600%)}}
 @media(max-width:700px){.food-carousel-window{border-radius:20px}.food-carousel-caption{left:20px;bottom:74px}.food-carousel-caption p{font-size:26px}.food-carousel-controls{left:20px;right:16px;bottom:14px}.food-slide img{object-position:center 48%}}
 @media(prefers-reduced-motion:reduce){.food-carousel-track{animation:none;transform:none;will-change:auto}.food-carousel-controls button{transition:none}}
+.quiz-progress{width:100%;height:6px;accent-color:var(--brand);margin:0 0 24px}
+.quiz-heading:focus{outline:none}
+.quiz-navigation{margin-top:28px;padding-top:20px;border-top:1px solid var(--line)}
+.taste-quiz .home-address{margin-top:20px}
+.search-progress{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--brand);border-radius:8px;background:var(--surface);font-size:14px}
+.search-spinner{display:inline-block;flex:0 0 20px;width:20px;height:20px;border:3px solid #d5d5d5;border-top-color:var(--brand);border-radius:50%;animation:search-spin 1s linear infinite}
+@keyframes search-spin{to{transform:rotate(360deg)}}
+.confirmation-toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:90;width:min(560px,calc(100% - 32px));background:var(--ink);color:white;border-radius:12px;padding:18px 22px;box-shadow:0 8px 30px #0003;display:flex;align-items:center;gap:12px}
+.confirmation-toast button{color:white;margin-left:auto}
+.tutorial-panel{background:var(--paper,#fff);color:var(--ink);border-radius:18px;padding:32px;width:min(540px,calc(100% - 32px));max-height:90dvh;overflow:auto;box-shadow:0 20px 80px #0003}
+.tutorial-panel h2{font-size:30px;line-height:1.15;margin:16px 0}
+.tutorial-panel p{line-height:1.65}
+.eat-here-help{margin:0 0 12px;font-size:12px;color:var(--muted)}
+@media(prefers-reduced-motion:reduce){.search-spinner{animation:none;border-style:dotted}}
+
+.tutorial-backdrop{align-items:center;justify-content:center}

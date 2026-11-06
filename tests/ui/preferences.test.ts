@@ -30,3 +30,9 @@ it('keeps a small search centred accurately and filters a wider provider result 
   const places = [{ ...demoRestaurants[0], id: 'inside', lat: input.lat + .002, lng: input.lng }, { ...demoRestaurants[0], id: 'outside', lat: input.lat + .004, lng: input.lng }];
   expect(rankRestaurants(places, defaultTasteProfile(), input, input.radiusKm).map(row => row.restaurant.id)).toEqual(['inside']);
 });
+
+it('starts new searches at 1km while retaining an explicitly saved radius', () => {
+ expect(DEFAULT_PREFERENCES.radiusKm).toBe(1);
+ expect(discoverInputSchema.parse({lat:43.47,lng:-80.54}).radiusKm).toBe(1);
+ expect(parsePreferences('{"radiusKm":5}').radiusKm).toBe(5);
+});

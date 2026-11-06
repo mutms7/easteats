@@ -1,3 +1,4 @@
+import { goToQuizStep } from './quiz-helpers';
 import { test, expect } from '@playwright/test';
 import { fixtureHome, fixtureSearch, searchFixtures } from './search-fixtures';
 
@@ -10,7 +11,7 @@ test('account is accessible before onboarding and before searching, saves detail
     return route.fulfill(fail ? { status: 503, json: { error: 'Account details could not be saved. Please retry.' } } : { json: { user: { id: 'fixture-search-user', name: input.name, email: input.email }, message: 'Account details saved.' } });
   });
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Where do you.*love eating/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Where should we look near home?' })).toBeVisible();
   await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Fixture diner');
   await page.getByRole('textbox', { name: 'Email', exact: true }).fill('fixture@example.invalid');
@@ -22,7 +23,8 @@ test('account is accessible before onboarding and before searching, saves detail
   await expect(page.getByRole('status').filter({ hasText: 'Account details saved.' })).toBeVisible();
   expect(writes).toHaveLength(2);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /Where do you.*love eating/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Where should we look near home?' })).toBeVisible();
+  await goToQuizStep(page, 3);
   await page.getByRole('button', { name: 'Find my next meal', exact: true }).click();
   await page.getByRole('button', { name: /find somewhere/ }).click();
   await page.getByRole('button', { name: 'Account', exact: true }).click();

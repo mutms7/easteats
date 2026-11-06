@@ -15,5 +15,5 @@ export const GET=endpoint(async()=>{
   const pending=!!answers&&typeof answers==='object'&&'_pending' in answers&&answers._pending===true;
   const personalized=!!profile&&!s.demo&&!pending;
   if(!profile&&valid.success)profile=provisionalTasteProfile(valid.data.goal);
-  return json({user:s.user?accountDetails(s.user):null,configured:s.user?true:await googleProviderReady(),demo:demoEnabled(),profile,answers:valid.success?valid.data:null,homeAddress,dataMode:s.demo?'demo':'live',personalized,warning:pending?'Your answers are saved. Your latest taste update hasn’t finished; retry it from Taste.':undefined});
+  return json({user:s.user?accountDetails(s.user):null,configured:s.user?true:await googleProviderReady(),demo:demoEnabled(),profile,answers:valid.success?valid.data:null,homeAddress,dataMode:s.demo?'demo':'live',personalized,tutorialCompleted:s.demo||!!(s.user&&'user_metadata' in s.user&&s.user.user_metadata?.east_eats_tutorial_completed===true),warning:pending?'Your answers are saved. Your latest taste update hasn’t finished; retry it from Taste.':undefined});
 });

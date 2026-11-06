@@ -18,6 +18,7 @@ export async function session() {
   if (!configured()) return {user:null,demo:false,client:null};
   const client=await userClient();
   const {data,error}=await client.auth.getUser();
+  if(error && (!('status' in error) || !error.status || error.status >= 500 || error.name === 'AuthRetryableFetchError')) throw new HttpError(503,'We couldn’t check your sign-in. Please retry.','UNAVAILABLE');
   return {user: error ? null : data.user,demo:false,client};
 }
 export async function requireSession() {

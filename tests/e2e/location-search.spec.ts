@@ -11,6 +11,7 @@ async function locationStage(page:Page){
  await page.route('**/api/searches',route=>route.fulfill({json:{items:[]}}));
  await page.goto('/');
  await expect(page.getByRole('combobox',{name:'Address or area'})).toBeVisible();
+ await expect(page.getByRole('combobox',{name:'Address or area'})).toBeEnabled();
  await page.clock.install();
 }
 
@@ -84,7 +85,12 @@ for(const outcome of ['success','error'] as const){
  test(`a late GPS ${outcome} cannot replace a chosen address or start another restaurant search`,async({page})=>{
   await page.addInitScript(()=>{
    const fixture=window as unknown as {gpsSuccess?:PositionCallback;gpsError?:PositionErrorCallback};
-   Object.defineProperty(navigator,'geolocation',{configurable:true,value:{getCurrentPosition(success:PositionCallback,error:PositionErrorCallback){fixture.gpsSuccess=success;fixture.gpsError=error;}}});
+   let lookups = 0;
+   Object.defineProperty(navigator,'geolocation',{configurable:true,value:{getCurrentPosition(success:PositionCallback,error:PositionErrorCallback){
+    // Let the automatic signup lookup finish before holding the explicit retry.
+    if (++lookups === 1) { error({code:1,message:'Initial permission denied'} as GeolocationPositionError); return; }
+    fixture.gpsSuccess=success;fixture.gpsError=error;
+   }}});
   });
   const discoveries:{lat:number;lng:number}[]=[];
   await page.route('**/api/geocode',route=>route.fulfill({json:{items:[address]}}));

@@ -1,3 +1,4 @@
+import { goToQuizStep } from './quiz-helpers';
 import { openAdjustSearch } from './search-fixtures';
 import { test, expect } from '@playwright/test';
 import { fixturePlace, fixtureSearch, searchFixtures } from './search-fixtures';
@@ -11,6 +12,7 @@ test('latest search and history open snapshots without discovery, including afte
   await expect(page.getByRole('heading', { name: 'Fixture dumpling day', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fixture Dumpling House', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Taste', exact: true }).click();
+  await goToQuizStep(page, 3);
   await page.getByRole('button', { name: 'Find my next meal', exact: true }).click();
   await page.getByRole('button', { name: /find somewhere/ }).click();
   await expect(page.getByRole('heading', { name: 'Fixture dumpling day', exact: true })).toBeVisible();

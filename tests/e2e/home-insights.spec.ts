@@ -1,3 +1,4 @@
+import { goToQuizStep } from './quiz-helpers';
 import { test, expect, type Page } from '@playwright/test';
 import type { DiscoverInput, SavedLocation, TasteInput } from '../../src/lib/contracts';
 import { searchFixtures, openAdjustSearch } from './search-fixtures';
@@ -46,10 +47,11 @@ test('saved home autofills location search and clears on focus without deleting 
 test('home save stays private, explicit Start runs once, and reload restores without another source run @smoke', async ({ page }) => {
   const state = await fixtures(page, null, false);
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Where do you.*love eating/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Where should we look near home?' })).toBeVisible();
   await selectHome(page, 'Fixture home Waterloo', home.label);
   expect(state.locations).toEqual([{ homeAddress: home }]);
   expect(state.discoveries).toHaveLength(0);
+  await goToQuizStep(page, 3);
   await page.getByRole('button', { name: 'Find my next meal', exact: true }).click();
   await expect(page.getByRole('heading', { name: /Here.*what.*hearing/ })).toBeVisible();
   expect(state.tastes).toHaveLength(1);
@@ -128,7 +130,7 @@ test('skip link stays clipped until keyboard focus, then appears at the viewport
   expect(await skip.evaluate(element => getComputedStyle(element).clipPath)).toBe('inset(50%)');
 });
 
-test('GPS is requested only by action and overrides home for this visit without saving it', async ({ page }) => {
+test('GPS biases suggestions automatically and an explicit choice overrides home without saving it', async ({ page }) => {
   await page.addInitScript(() => {
     const gps = { calls: 0, complete: () => {} };
     Object.assign(window, { fixtureGPS: gps });
@@ -138,14 +140,17 @@ test('GPS is requested only by action and overrides home for this visit without 
     } } });
   });
   const state = await fixtures(page, home);
-  await page.goto('/'); await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
+  await page.goto('/');
+  await expect(page.getByRole('combobox', { name: 'Address or area' })).toBeVisible();
+  await page.evaluate(() => (window as unknown as { fixtureGPS: { complete: () => void } }).fixtureGPS.complete());
+  await page.getByRole('button', { name: 'Start search', exact: true }).click(); await expect(page.locator('.restaurant-card')).toHaveCount(1);
   const gpsCalls = () => page.evaluate(() => (window as unknown as { fixtureGPS: { calls: number } }).fixtureGPS.calls);
-  expect(await gpsCalls()).toBe(0);
+  expect(await gpsCalls()).toBe(1);
   await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'New search', exact: true }).click();
   await page.getByRole('button', { name: 'Use my location', exact: true }).click();
-  expect(await gpsCalls()).toBe(1);
+  expect(await gpsCalls()).toBe(2);
   await page.evaluate(() => (window as unknown as { fixtureGPS: { complete: () => void } }).fixtureGPS.complete());
   await expect(page.getByRole('combobox', { name: 'Address or area' })).toHaveValue('Near you');
   expect(state.discoveries).toHaveLength(1);

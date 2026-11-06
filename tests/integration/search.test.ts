@@ -31,3 +31,15 @@ it('rejects identity-free requests instead of silently reusing a stale job or la
  const response=await search({query:'Pho99',city:'Coquitlam'});
  expect(response.status).toBe(400);expect((await response.json()).code).toBe('SEARCH_ID_REQUIRED');expect(mocks.queue).not.toHaveBeenCalled();
 });
+
+it('uses user proximity for nearby live favorites and lets an explicit city override it',async()=>{
+ const searchId='50af1120-c246-4f90-a1e3-cf838796255b';
+ await search({query:'Noodles',proximity:{lat:43.47,lng:-80.54},searchId});
+ expect(mocks.queue).toHaveBeenLastCalledWith({},'favorite-search',{query:'noodles',city:'',lat:43.47,lng:-80.54,radiusKm:1},searchId);
+ await search({query:'Noodles',city:'Toronto',proximity:{lat:43.47,lng:-80.54},searchId});
+ expect(mocks.queue).toHaveBeenLastCalledWith({},'favorite-search',{query:'noodles',city:'toronto'},searchId);
+});
+it('rejects invalid proximity before launching live work',async()=>{
+ expect((await search({query:'Noodles',proximity:{lat:100,lng:0},searchId:'50af1120-c246-4f90-a1e3-cf838796255b'})).status).toBe(400);
+ expect(mocks.queue).not.toHaveBeenCalled();
+});

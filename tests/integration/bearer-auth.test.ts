@@ -122,3 +122,19 @@ describe('existing browser and explicit demo login',()=>{
     const auth=await session();expect(auth.demo).toBe(false);expect(auth.user?.id).toBe('browser-user');
   });
 });
+
+
+describe('browser session availability', () => {
+  it.each([
+    { name: 'AuthRetryableFetchError', status: 0 },
+    { name: 'AuthApiError', status: 503 },
+    { name: 'FetchError' },
+  ])('reports transient auth failures as unavailable rather than signed out: %j', async error => {
+    browser.createServerClient.mockReturnValueOnce({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error }) } });
+    await expect(session()).rejects.toMatchObject({ status: 503, code: 'UNAVAILABLE' });
+  });
+  it('recognizes an invalid session without granting access', async () => {
+    browser.createServerClient.mockReturnValueOnce({ auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: { name: 'AuthApiError', status: 401 } }) } });
+    expect((await session()).user).toBeNull();
+  });
+});

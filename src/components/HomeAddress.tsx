@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import type { SavedLocation } from '@/lib/contracts';
+import type { Location, SavedLocation } from '@/lib/contracts';
 import LocationSearch from './LocationSearch';
 
-export default function HomeAddress({ value, onChange }: { value: SavedLocation | null; onChange: (value: SavedLocation | null) => void }) {
+export default function HomeAddress({ value, onChange, proximity, locating = false }: { locating?: boolean; proximity?: Location | null; value: SavedLocation | null; onChange: (value: SavedLocation | null) => void }) {
   const heading = useId();
   const [editing, setEditing] = useState(!value); const [candidate, setCandidate] = useState<SavedLocation | null>(null);
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState('');
@@ -25,7 +25,7 @@ export default function HomeAddress({ value, onChange }: { value: SavedLocation 
   }
   return <section className="home-address" aria-labelledby={heading}><h2 id={heading}>Home address <span>(optional)</span></h2><p className="small">Where should each new search start? Save your home address here. You can change it anytime in Account.</p>
     {value && <div className="home-address-saved"><span className="home-address-label">Saved home</span><p>{value.label}</p><div className="inline-actions"><button className="button" type="button" disabled={busy} onClick={() => { setEditing(true); setCandidate(null); setMessage(''); }}>Change home address</button><button className="text-button" type="button" disabled={busy} onClick={() => { void save(null); }}>Clear home address</button></div></div>}
-    {editing && <><LocationSearch key={value?.label ?? 'new'} proximity={value} label="Home address" hint="Choose the full address you want to save. This does not start a restaurant search." onQueryChange={() => setCandidate(null)} onSelect={area => { setCandidate({ lat: area.lat, lng: area.lng, label: area.label }); setError(''); }} />{candidate && <p className="small home-address-candidate">Selected: {candidate.label}</p>}<div className="inline-actions"><button className="button" type="button" disabled={!candidate || busy} onClick={() => { if (candidate) void save(candidate); }}>{busy ? 'Saving address...' : 'Save home address'}</button>{value && <button className="text-button" type="button" disabled={busy} onClick={() => { setEditing(false); setCandidate(null); }}>Cancel address change</button>}</div></>}
+    {editing && <><LocationSearch disabled={locating} key={value?.label ?? 'new'} proximity={proximity ?? value} label="Home address" hint="Choose the full address you want to save. This does not start a restaurant search." onQueryChange={() => setCandidate(null)} onSelect={area => { setCandidate({ lat: area.lat, lng: area.lng, label: area.label }); setError(''); }} />{candidate && <p className="small home-address-candidate">Selected: {candidate.label}</p>}<div className="inline-actions"><button className="button" type="button" disabled={!candidate || busy} onClick={() => { if (candidate) void save(candidate); }}>{busy ? 'Saving address...' : 'Save home address'}</button>{value && <button className="text-button" type="button" disabled={busy} onClick={() => { setEditing(false); setCandidate(null); }}>Cancel address change</button>}</div></>}
     {error && <p className="home-address-error" role="alert">{error}</p>}{message && <p className="small" role="status">{message}</p>}
   </section>;
 }

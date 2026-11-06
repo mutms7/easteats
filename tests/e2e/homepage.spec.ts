@@ -22,10 +22,11 @@ for(const viewport of [{width:375,height:667},{width:390,height:844},{width:1440
   const animationBox=await demo.boundingBox(),signInBox=await google.boundingBox();
   expect(animationBox!.y+animationBox!.height).toBeLessThan(signInBox!.y);expect(animationBox!.y).toBeGreaterThanOrEqual(0);
   await expect(page.getByRole('link',{name:'Sign in',exact:true})).toBeVisible();
-  await expect(demo.getByRole('button')).toHaveCount(0);await expect(demo.getByRole('slider')).toHaveCount(0);
+  await expect(demo.getByRole('button',{name:'Pause introduction'})).toBeVisible();await expect(demo.getByRole('slider',{name:'Introduction playback position'})).toBeVisible();
+  await expect(demo.getByText('Watch how East Eats works')).toBeVisible();
   for(const text of ['See what makes it yours','A little taste of East Eats.','28 seconds / Silent','Read the demo','Illustrative demo'])await expect(page.getByText(text,{exact:true})).toHaveCount(0);
   await expect(demo.locator('.hd-stage')).toHaveCSS('border-top-width','0px');await expect(demo.locator('.hd-stage')).toHaveCSS('border-radius','0px');
-  await expect(page.getByAltText('Ramen with sliced pork, a soft-boiled egg, scallions, and chili on a wooden table')).toHaveAttribute('src',/ramen-home/);
+  await expect(page.getByAltText('Rich ramen broth with chashu pork, noodles, scallions, and a jammy egg')).toHaveAttribute('src',/cravings%2Framen|cravings\/ramen/);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:testInfo.outputPath('homepage.png'),fullPage:false});
  });

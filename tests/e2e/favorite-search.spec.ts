@@ -1,3 +1,4 @@
+import { goToQuizStep } from './quiz-helpers';
 import { test, expect, type Page } from '@playwright/test';
 import type { Restaurant } from '../../src/lib/contracts';
 
@@ -16,7 +17,7 @@ async function openQuestionnaire(page: Page) {
   await page.route('**/api/session', route => route.fulfill({ json: { user: { id: 'ui-fixture-user' }, configured: true, demo: false, dataMode: 'live', profile: null, answers: null } }));
   await page.route('**/api/saved', route => route.fulfill({ json: { items: [] } }));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Where do you.*love eating/ })).toBeVisible();
+  await goToQuizStep(page, 1);
   await page.clock.install();
   await page.getByRole('textbox', { name: 'Restaurant name' }).fill('Pho99');
   await page.getByRole('textbox', { name: /City/ }).fill('Coquitlam');
@@ -30,6 +31,7 @@ test('cached favorite matches remain selectable during a live Google Maps check'
   await expect(favoriteStatus(page)).toContainText('Searching Google Maps…');
   await expect(page.getByRole('button', { name: 'Add favorite', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Add favorite', exact: true }).click();
+  await goToQuizStep(page, 2);
   await expect(page.getByRole('group', { name: 'Pho99' })).toBeVisible();
 });
 
