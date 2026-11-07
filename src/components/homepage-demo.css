@@ -1,7 +1,7 @@
 /* Playback controls stay visible beneath the animated introduction. */
 .homepage-demo .hd-player-label{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;font-size:14px;margin:12px 16px;font-weight:650}
 .homepage-demo .hd-player-label span{font-size:12px;font-weight:400;color:var(--muted)}
-.homepage-demo .hd-player-controls{display:flex;align-items:center;gap:12px;padding:10px 16px;border:1px solid var(--ink);border-radius:10px;margin:0 12px 20px}
+.homepage-demo .hd-player-controls{display:flex;align-items:center;gap:12px;padding:10px 16px;border:0;border-radius:0;margin:0 12px 20px}
 .homepage-demo .hd-seek{flex:1;min-width:35px;margin:0}
 .homepage-demo .hd-seek input{width:100%;padding:0;accent-color:var(--brand);cursor:pointer}
 .homepage-demo .hd-player-time{white-space:nowrap;font-size:12px;font-variant-numeric:tabular-nums}
@@ -136,3 +136,5 @@
 @media(max-width:700px){.homepage-demo .hd-stage{height:300px}.homepage-demo .hd-player-controls{margin:0 0 12px;padding:8px;gap:8px}.homepage-demo .hd-player-label{margin:8px 0}.homepage-demo .hd-player-controls .button{padding:8px 10px}}
 
 @media(max-width:700px){.homepage-demo .hd-favorites .hd-demo-title h3{font-size:26px}.homepage-demo .hd-favorites .hd-demo-title{margin-bottom:8px}.homepage-demo .hd-favorites .hd-search-card{padding:10px}.homepage-demo .hd-favorites .hd-favorite-result{padding:8px 0}.homepage-demo .hd-favorites .hd-choice{font-size:12px;padding:6px 8px}.homepage-demo .hd-favorites .hd-reason-box{padding:10px}.homepage-demo .hd-favorites .hd-search-field{min-height:36px;padding:7px 10px}}
+
+.homepage-demo .hd-player-controls>.button{width:108px;min-width:108px;height:48px;flex:0 0 108px;padding:10px 12px}.homepage-demo .hd-player-controls>.button svg{flex:none}

@@ -23,3 +23,5 @@ Food inspiration only, these photographs don't represent recommended restaurants
 | cravings/bao.webp | [Stefan Hiienurm, bao bun](https://unsplash.com/photos/a-hand-holding-a-sandwich-0ny6PUEF3ng) |
 
 The carousel also uses the existing Charles Chen dumplings photograph credited above. The original supplied ramen-home.png is retained in the project but isn't shown in the carousel.
+
+Tutorial click cue: hand-pointing vector adapted from ReactFrame, https://reactframe.com/icons/hand-pointing (local tap and ripple animation).

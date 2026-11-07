@@ -1,0 +1,16 @@
+.questions-main{width:min(100% - 48px,820px);margin:48px auto 80px}
+.questions-page .site-header{justify-content:space-between}
+.questions-main h1{font-size:clamp(36px,5vw,58px);letter-spacing:-.045em;line-height:1.08;margin:12px 0 20px}
+.questions-main>.lede{max-width:660px}
+.questions-shortcuts{display:flex;gap:12px 24px;flex-wrap:wrap;margin:28px 0 36px;font-size:14px;font-weight:650}
+.questions-shortcuts a{min-height:44px;display:inline-flex;align-items:center}
+.questions-list details{border-top:1px solid var(--line);padding:20px 0;scroll-margin-top:24px}
+.questions-list details:last-child{border-bottom:1px solid var(--line)}
+.questions-list summary{font-size:19px;font-weight:700;line-height:1.4;cursor:pointer;min-height:44px;padding:8px 0}
+.questions-list p{font-size:16px;line-height:1.75;color:var(--muted);margin:12px 0 4px;max-width:740px}
+.questions-contact{margin-top:52px;padding:30px;border-radius:18px;background:var(--soft);scroll-margin-top:24px}
+.questions-contact h2{font-size:28px;line-height:1.2;margin:8px 0 18px}
+.questions-contact p{line-height:1.7}
+.questions-email{display:inline-block;font-size:18px;font-weight:650;margin:12px 0;overflow-wrap:anywhere}
+.questions-contact .inline-actions{gap:10px}
+@media(max-width:560px){.questions-main{width:calc(100% - 40px);margin-top:28px}.questions-list summary{font-size:17px}.questions-contact{padding:22px}.questions-contact h2{font-size:25px}.questions-page .site-header .button{font-size:12px;padding:10px 14px}}

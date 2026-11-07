@@ -41,6 +41,12 @@ for (const width of [375, 1440]) {
     await page.goto('/');
     const guide = page.locator('.tutorial-coach');
     await expect(guide).toHaveAttribute('data-step', '0');
+    await expect(guide.getByRole('button', { name: 'Skip tutorial' })).toHaveCount(0);
+    const skip = page.getByRole('button', { name: 'Skip tutorial', exact: true });
+    await expect(skip).toHaveCSS('position', 'fixed');
+    const skipBox = await skip.boundingBox();
+    expect(skipBox!.x).toBe(16);
+    await expect(page.locator('.tutorial-click-cue')).toHaveCSS('pointer-events', 'none');
     await expect(page.getByRole('button', { name: 'Use this area' })).toBeDisabled();
     await expect(page.locator('.search-composer .location-search')).toHaveClass(/tutorial-target/);
     await page.getByRole('combobox', { name: 'Address or area' }).fill('Waterloo');
@@ -58,6 +64,10 @@ for (const width of [375, 1440]) {
     await page.screenshot({ path: testInfo.outputPath(`guided-filters-${width}.png`) });
     await page.getByRole('button', { name: 'Keep these filters' }).click();
     await expect(guide).toContainText('Your first search may take up to a minute, flavor awaits!');
+    const cueBox = await page.locator('.tutorial-click-cue').boundingBox();
+    const startBox = await page.getByRole('button', { name: 'Start search', exact: true }).boundingBox();
+    expect(cueBox!.x + 20).toBeCloseTo(startBox!.x + startBox!.width / 2, 0);
+    await page.screenshot({ path: testInfo.outputPath(`click-cue-${width}.png`) });
     expect(fixture.state.discover).toHaveLength(0);
     await page.getByRole('button', { name: 'Start search', exact: true }).click();
     await expect(guide).toHaveAttribute('data-step', '4');
@@ -72,6 +82,7 @@ for (const width of [375, 1440]) {
     await expect(page.locator('.detail-dialog .restaurant-actions')).toHaveClass(/tutorial-target/);
     await expect(guide).toContainText('Eat here records your meal choice');
     await expect(page.getByRole('dialog').getByRole('region', { name: 'Keep a place or choose your meal' })).toBeVisible();
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Skip tutorial', exact: true })).toBeVisible();
     const back = page.getByRole('button', { name: 'Back to results', exact: true });
     for (let count = 0; count < 25 && !await back.evaluate(element => document.activeElement === element); count++) await page.keyboard.press('Tab');
     await expect(back).toBeFocused();

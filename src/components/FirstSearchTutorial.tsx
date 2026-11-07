@@ -31,6 +31,7 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const panel = useRef<HTMLElement>(null);
+  const [cursorStyle, setCursorStyle] = useState<CSSProperties>({ display: 'none' });
   const [dialogHost, setDialogHost] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => { setDialogHost(restaurantOpen ? document.querySelector<HTMLElement>('.detail-dialog') : null); }, [restaurantOpen]);
   const [placement, setPlacement] = useState<{ style: CSSProperties; side: string }>({ style: { visibility: 'hidden' }, side: 'below' });
@@ -60,7 +61,8 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
     // Leave room below tall filter sections on narrow screens.
     const initial = target.getBoundingClientRect();
     const guideHeight = card.getBoundingClientRect().height;
-    if (window.innerWidth < 760 && initial.bottom + guideHeight + 32 > window.innerHeight && initial.top - guideHeight < 32) {
+    const bottomInset = () => window.innerWidth <= 950 && stage === 'explore' ? 144 : 76;
+    if (window.innerWidth < 760 && initial.bottom + guideHeight + 32 > window.innerHeight - bottomInset() && initial.top - guideHeight < 32) {
       window.scrollBy({ top: initial.top - 16, behavior: 'instant' });
     }
     function position() {
@@ -68,6 +70,15 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
       const rect = target.getBoundingClientRect();
       const width = Math.min(360, window.innerWidth - 32);
       const height = card.getBoundingClientRect().height;
+      const bottomLimit = window.innerHeight - bottomInset();
+      const clickSelectors = [
+        '.search-composer .location-search input', '#new-food-query', '.search-composer .filters select',
+        '.new-search-start .primary', null, '.restaurant-list .restaurant-card:first-child .restaurant-title',
+        '.detail-dialog .save-button', '.bottom-nav button',
+      ];
+      const clickTarget = clickSelectors[step] ? document.querySelector<HTMLElement>(clickSelectors[step]!) : null;
+      const clickRect = clickTarget?.getBoundingClientRect();
+      setCursorStyle(clickRect && clickRect.bottom > 0 && clickRect.top < window.innerHeight ? { left: clickRect.left + clickRect.width / 2 - 20, top: clickRect.top + clickRect.height / 2 - 8 } : { display: 'none' });
       const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16));
       const below = rect.bottom + 16;
       const above = rect.top - height - 16;
@@ -75,14 +86,14 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
       let side: string;
       // On wider screens, keep the guide beside the live form or dialog.
       if (rect.right + width + 32 <= window.innerWidth) {
-        top = Math.max(16, Math.min(rect.top, window.innerHeight - height - 16));
+        top = Math.max(16, Math.min(rect.top, bottomLimit - height));
         side = 'right';
         setPlacement({ style: { top, left: rect.right + 16, width }, side });
         return;
       }
-      if (below + height <= window.innerHeight - 16) { top = below; side = 'below'; }
-      else if (above >= 16) { top = above; side = 'above'; }
-      else { top = Math.max(16, window.innerHeight - height - 16); side = 'below'; }
+      if (below + height <= bottomLimit) { top = below; side = 'below'; }
+      else if (above >= 16) { top = Math.min(above, bottomLimit - height); side = 'above'; }
+      else { top = Math.max(16, bottomLimit - height); side = 'below'; }
       setPlacement({ style: { top, left, width }, side });
     }
     position();
@@ -95,14 +106,14 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
       if (describedBy) target?.setAttribute('aria-describedby', describedBy); else target?.removeAttribute('aria-describedby');
       observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true);
     };
-  }, [active, lesson.target, empty, dialogHost]);
+  }, [active, lesson.target, empty, dialogHost, step, stage]);
 
   async function finish() {
     setSaving(true); setError('');
     try { await onClose(); } catch { setError('We couldn’t save that yet. Please try again.'); } finally { setSaving(false); }
   }
   if (!active) return null;
-  const coach = <aside ref={panel} className="tutorial-coach" role="region" aria-labelledby="tutorial-title" style={placement.style} data-step={step} data-side={placement.side}>
+  const coach = <><aside ref={panel} className="tutorial-coach" role="region" aria-labelledby="tutorial-title" style={placement.style} data-step={step} data-side={placement.side}>
     <span className="tutorial-pointer" aria-hidden="true" /><div className="tutorial-coach-content">
     <p className="eyebrow">Your first search · {step + 1} of {steps.length}</p>
     <div aria-live="polite" aria-atomic="true"><h2 id="tutorial-title">{empty ? 'Try another search' : lesson.title}</h2><p id="tutorial-description">{empty ? 'No places are available for this search yet. Try a different area or a wider distance, then start again. You can also skip the tour and explore on your own.' : lesson.text}</p></div>
@@ -114,8 +125,10 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
       {empty && <button className="button primary" onClick={() => { setStep(0); onNewSearch(); }}>Try a new search</button>}
       {step === 6 && <button className="button primary" onClick={() => { onCloseRestaurant(); setStep(7); }}>Back to results</button>}
       {step === 7 && <button className="button primary" disabled={saving} onClick={() => void finish()}>{saving ? 'Saving…' : 'Finish tutorial'}</button>}
-      <button className="text-button" disabled={saving} onClick={() => void finish()}>Skip tutorial</button>
     </div></div>
-  </aside>;
+  </aside>
+  <button className={`button tutorial-skip${stage === 'explore' ? ' with-navigation' : ''}`} disabled={saving} onClick={() => void finish()}>Skip tutorial</button>
+  <span className="tutorial-click-cue" style={cursorStyle} aria-hidden="true"><span className="tutorial-click-ring" /><img src="/images/tutorial/click-hand.svg" alt="" width="48" height="48" /></span>
+  </>;
   return restaurantOpen && dialogHost ? createPortal(coach, dialogHost) : coach;
 }

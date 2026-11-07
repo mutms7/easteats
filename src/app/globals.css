@@ -171,3 +171,13 @@
 .tutorial-coach[data-side=above] .tutorial-pointer{bottom:-6px;left:26px;transform:rotate(225deg)}
 .tutorial-coach[data-side=right] .tutorial-pointer{left:-6px;top:26px;transform:rotate(-45deg)}
 @media(max-width:560px){.tutorial-coach-content{padding:16px}.tutorial-coach h2{font-size:20px}.tutorial-coach p{font-size:13px}.tutorial-target{outline-offset:3px}}
+
+.saved-return{margin-top:32px}
+.tutorial-skip{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:85;background:#fff;box-shadow:0 3px 14px #0002;min-height:44px}
+.tutorial-click-cue{position:fixed;z-index:82;width:48px;height:48px;pointer-events:none;filter:drop-shadow(0 2px 2px #fff)}
+.tutorial-click-cue img{display:block;animation:tutorial-tap 1.8s ease-in-out infinite;transform-origin:20px 8px}
+.tutorial-click-ring{position:absolute;left:7px;top:-5px;width:26px;height:26px;border:2px solid var(--brand);border-radius:50%;animation:tutorial-ripple 1.8s ease-out infinite}
+@keyframes tutorial-tap{0%,35%,100%{transform:translate(5px,7px) rotate(-12deg)}45%,60%{transform:translate(0,0) rotate(-12deg) scale(.9)}}
+@keyframes tutorial-ripple{0%,35%{opacity:0;transform:scale(.4)}45%{opacity:1;transform:scale(.5)}90%,100%{opacity:0;transform:scale(1.5)}}
+@media(max-width:950px){.tutorial-skip.with-navigation{bottom:calc(84px + env(safe-area-inset-bottom))}}
+@media(prefers-reduced-motion:reduce){.tutorial-click-cue{display:none}}

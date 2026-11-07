@@ -103,6 +103,7 @@ test('search indicator remains visible through partial places and review enrichm
   await expect(page.locator('.restaurant-list')).toHaveAttribute('aria-busy', 'true');
   phase = 'reviews'; await page.clock.fastForward(3100);
   await expect(page.getByRole('status').filter({ hasText: 'checking food details' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'checking food details' }).getByRole('link', { name: 'Questions?' })).toHaveAttribute('href', '/questions');
   await expect(page.locator('.search-spinner')).toBeVisible();
   phase = 'complete'; await page.clock.fastForward(3100);
   await expect(page.locator('.search-spinner')).toHaveCount(0);
