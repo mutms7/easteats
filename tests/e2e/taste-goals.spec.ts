@@ -26,9 +26,9 @@ test('five goals persist through reload, save, correction, and later editing wit
  expect(submitted[0].goal).toBe('date-night');expect(submitted[0].favorites).toEqual([favorite]);
  await page.getByRole('textbox',{name:'Anything we missed?'}).fill('I prefer somewhere quiet.');await page.getByRole('button',{name:'Update my tastes',exact:true}).click();
  await expect.poll(()=>submitted.length).toBe(2);expect(submitted[1]).toMatchObject({goal:'date-night',correction:'I prefer somewhere quiet.'});
- await page.getByRole('button',{name:'Taste',exact:true}).click();await goToQuizStep(page,3);await expect(page.getByRole('radio',{name:'Date night',exact:true})).toBeChecked();
- await page.getByRole('radio',{name:'Great service',exact:true}).check();await page.getByRole('button',{name:'Find my next meal',exact:true}).click();
- await expect(page.locator('.taste-goal-summary')).toHaveText('Right now:Great service');expect(submitted.at(-1)?.goal).toBe('service');
+ await page.getByRole('button',{name:'Taste',exact:true}).click();await expect(page.getByRole('heading',{name:'Your taste preferences',exact:true})).toBeVisible();await expect(page.getByRole('progressbar',{name:'Signup progress'})).toHaveCount(0);await expect(page.getByRole('radio',{name:'Date night',exact:true})).toBeChecked();
+ await page.getByRole('radio',{name:'Great service',exact:true}).check();await page.getByRole('button',{name:'Save taste preferences',exact:true}).click();
+ await expect(page.getByRole('status').filter({hasText:'Taste preferences saved.'})).toBeVisible();await expect(page.getByRole('heading',{name:'Your taste preferences',exact:true})).toBeVisible();await expect(page.getByRole('radio',{name:'Great service',exact:true})).toBeChecked();expect(submitted.at(-1)?.goal).toBe('service');
 });
 
 test('a priority draft is isolated by account and invalid drafts use the saved choice',async({page})=>{

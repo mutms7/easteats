@@ -78,7 +78,7 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
       ];
       const clickTarget = clickSelectors[step] ? document.querySelector<HTMLElement>(clickSelectors[step]!) : null;
       const clickRect = clickTarget?.getBoundingClientRect();
-      setCursorStyle(clickRect && clickRect.bottom > 0 && clickRect.top < window.innerHeight ? { left: clickRect.left + clickRect.width / 2 - 20, top: clickRect.top + clickRect.height / 2 - 8 } : { display: 'none' });
+      setCursorStyle(clickRect && clickRect.bottom > 0 && clickRect.top < window.innerHeight ? { left: clickRect.left + clickRect.width / 2 - 4, top: clickRect.top + clickRect.height / 2 - 2 } : { display: 'none' });
       const left = Math.max(16, Math.min(rect.left, window.innerWidth - width - 16));
       const below = rect.bottom + 16;
       const above = rect.top - height - 16;
@@ -128,7 +128,7 @@ export default function FirstSearchTutorial({ stage, locationReady, craving, has
     </div></div>
   </aside>
   <button className={`button tutorial-skip${stage === 'explore' ? ' with-navigation' : ''}`} disabled={saving} onClick={() => void finish()}>Skip tutorial</button>
-  <span className="tutorial-click-cue" style={cursorStyle} aria-hidden="true"><span className="tutorial-click-ring" /><img src="/images/tutorial/click-hand.svg" alt="" width="48" height="48" /></span>
+  <span className="tutorial-click-cue" style={cursorStyle} aria-hidden="true"><span className="tutorial-click-ring" /><img src="/images/tutorial/click-pointer.svg" alt="" width="48" height="48" /></span>
   </>;
   return restaurantOpen && dialogHost ? createPortal(coach, dialogHost) : coach;
 }

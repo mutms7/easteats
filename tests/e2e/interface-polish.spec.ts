@@ -55,6 +55,7 @@ test('search status links to Questions in another tab while search remains runni
   await page.route('**/api/jobs/*', route => route.fulfill({ json: { job: { id: 'still-searching', status: 'running' } } }));
   await page.goto('/');
   await page.getByRole('button', { name: 'Start search', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep browsing' }).click();
   const status = page.getByRole('status').filter({ hasText: 'Searching Google Maps for places' });
   await expect(status).toContainText('Results and map pins appear as they arrive. Questions?');
   const popup = page.waitForEvent('popup');

@@ -66,12 +66,12 @@ for (const width of [375, 1440]) {
     await expect(guide).toContainText('Your first search may take up to a minute, flavor awaits!');
     const cueBox = await page.locator('.tutorial-click-cue').boundingBox();
     const startBox = await page.getByRole('button', { name: 'Start search', exact: true }).boundingBox();
-    expect(cueBox!.x + 20).toBeCloseTo(startBox!.x + startBox!.width / 2, 0);
+    expect(cueBox!.x + 4).toBeCloseTo(startBox!.x + startBox!.width / 2, 0);
     await page.screenshot({ path: testInfo.outputPath(`click-cue-${width}.png`) });
     expect(fixture.state.discover).toHaveLength(0);
     await page.getByRole('button', { name: 'Start search', exact: true }).click();
-    await expect(guide).toHaveAttribute('data-step', '4');
-    await expect(guide).toContainText('Your first search may take up to a minute');
+    await expect(page.getByRole('dialog', { name: 'What’s in store for you today?' })).toBeVisible();
+    await expect(guide).toHaveCount(0);
     await expect.poll(() => Boolean(finishSearch)).toBe(true);
     finishSearch!();
     await expect(guide).toHaveAttribute('data-step', '5');

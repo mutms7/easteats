@@ -1,4 +1,3 @@
-import { goToQuizStep } from './quiz-helpers';
 import { openAdjustSearch } from './search-fixtures';
 import { test, expect } from '@playwright/test';
 import { fixturePlace, fixtureSearch, searchFixtures } from './search-fixtures';
@@ -12,9 +11,10 @@ test('latest search and history open snapshots without discovery, including afte
   await expect(page.getByRole('heading', { name: 'Fixture dumpling day', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fixture Dumpling House', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Taste', exact: true }).click();
-  await goToQuizStep(page, 3);
-  await page.getByRole('button', { name: 'Find my next meal', exact: true }).click();
-  await page.getByRole('button', { name: /find somewhere/ }).click();
+  await expect(page.getByRole('heading', { name: 'Your taste preferences', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save taste preferences', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Taste preferences saved.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to exploring', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Fixture dumpling day', exact: true })).toBeVisible();
   expect(state.discover).toHaveLength(0);
 });
@@ -52,6 +52,7 @@ test('switching history cancels a late active search response', async ({ page })
   await page.goto('/'); await expect(page.locator('.restaurant-card')).toHaveCount(1);
   await page.getByRole('button', { name: 'New search', exact: true }).click(); await page.getByRole('button', { name: 'Start search', exact: true }).click();
   await expect.poll(() => sourceStarted).toBe(true);
+  await page.getByRole('button', { name: 'Keep browsing' }).click();
   await page.locator('.search-history-chip').filter({ hasText: saved.title }).click();
   await expect(page.getByRole('heading', { name: saved.title, exact: true })).toBeVisible();
   release(); await page.waitForTimeout(100);

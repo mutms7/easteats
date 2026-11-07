@@ -175,9 +175,35 @@
 .saved-return{margin-top:32px}
 .tutorial-skip{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:85;background:#fff;box-shadow:0 3px 14px #0002;min-height:44px}
 .tutorial-click-cue{position:fixed;z-index:82;width:48px;height:48px;pointer-events:none;filter:drop-shadow(0 2px 2px #fff)}
-.tutorial-click-cue img{display:block;animation:tutorial-tap 1.8s ease-in-out infinite;transform-origin:20px 8px}
-.tutorial-click-ring{position:absolute;left:7px;top:-5px;width:26px;height:26px;border:2px solid var(--brand);border-radius:50%;animation:tutorial-ripple 1.8s ease-out infinite}
+.tutorial-click-cue img{display:block;animation:tutorial-tap 1.8s ease-in-out infinite;transform-origin:4px 2px}
+.tutorial-click-ring{position:absolute;left:-9px;top:-11px;width:26px;height:26px;border:2px solid var(--brand);border-radius:50%;animation:tutorial-ripple 1.8s ease-out infinite}
 @keyframes tutorial-tap{0%,35%,100%{transform:translate(5px,7px) rotate(-12deg)}45%,60%{transform:translate(0,0) rotate(-12deg) scale(.9)}}
 @keyframes tutorial-ripple{0%,35%{opacity:0;transform:scale(.4)}45%{opacity:1;transform:scale(.5)}90%,100%{opacity:0;transform:scale(1.5)}}
 @media(max-width:950px){.tutorial-skip.with-navigation{bottom:calc(84px + env(safe-area-inset-bottom))}}
 @media(prefers-reduced-motion:reduce){.tutorial-click-cue{display:none}}
+
+.search-loading-screen{position:fixed;inset:0;z-index:70;background:#fffaf6;display:grid;place-items:center;padding:32px;overflow:auto;animation:search-screen-in .42s cubic-bezier(.2,.8,.2,1) both}
+.search-loading-screen.is-leaving{animation:search-screen-out .36s cubic-bezier(.4,0,1,1) both;pointer-events:none}
+.search-loading-content{width:min(100%,650px);text-align:center;margin:auto}
+.search-loading-content>.eyebrow{color:var(--brand)}
+.noodle-animation{width:min(280px,65vw);height:auto;margin:8px auto 16px;overflow:visible}
+.search-loading-message{font-size:clamp(30px,5vw,48px);line-height:1.12;letter-spacing:-.04em;min-height:2.3em;margin:0 0 16px;animation:loading-message-in .45s ease both}
+.search-loading-content>p{max-width:530px;margin:12px auto;line-height:1.65;overflow-wrap:anywhere}
+.search-loading-content .inline-actions{justify-content:center;margin-top:28px}
+.search-loading-content .inline-actions a{font-size:14px;min-height:44px;display:inline-flex;align-items:center}
+.noodle-steam{animation:noodle-steam 2.8s ease-in-out infinite}
+.noodle-chopsticks{transform-origin:180px 100px;animation:noodle-stir 2.8s ease-in-out infinite}
+.noodle-strand{transform-origin:174px 95px;animation:noodle-lift 2.8s ease-in-out infinite}
+.noodle-bowl{transform-origin:150px 216px;animation:noodle-rock 2.8s ease-in-out infinite}
+.taste-editor>.lede{margin-bottom:22px}.taste-editor .search-form{margin-top:24px}.taste-editor .favorites-list{margin:30px 0}.taste-editor .taste-goal-fieldset{margin-top:32px}
+@keyframes search-screen-in{from{transform:translateY(100%);opacity:.5}to{transform:translateY(0);opacity:1}}
+@keyframes search-screen-out{from{transform:translateY(0);opacity:1}to{transform:translateY(-100%);opacity:0}}
+@keyframes loading-message-in{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes noodle-steam{0%,100%{transform:translateY(4px);opacity:.35}50%{transform:translateY(-9px);opacity:.8}}
+@keyframes noodle-stir{0%,100%{transform:rotate(-5deg) translateY(0)}50%{transform:rotate(5deg) translateY(-12px)}}
+@keyframes noodle-lift{0%,100%{transform:scaleY(1)}50%{transform:translateY(-12px) scaleY(1.25)}}
+@keyframes noodle-rock{0%,100%{transform:rotate(-1deg)}50%{transform:rotate(1deg)}}
+@media(max-width:560px){.search-loading-screen{padding:24px 20px}.search-loading-message{font-size:32px}.search-loading-content .inline-actions{flex-direction:column}.search-loading-content .inline-actions>.button{flex:none}}
+@media(prefers-reduced-motion:reduce){.search-loading-screen,.search-loading-screen.is-leaving,.search-loading-message,.noodle-steam,.noodle-chopsticks,.noodle-strand,.noodle-bowl{animation:none}}
+
+.taste-add-favorite{padding:18px 20px;border:1px solid var(--line);border-radius:14px;margin:24px 0}.taste-add-favorite>summary{cursor:pointer;font-weight:700;min-height:28px}.taste-add-favorite[open]>summary{margin-bottom:20px}.taste-add-favorite .lede{font-size:16px}.taste-add-favorite .search-form{padding:0;border:0;margin:18px 0}

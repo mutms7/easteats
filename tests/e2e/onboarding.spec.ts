@@ -34,9 +34,11 @@ test('signup asks one question at a time, biases addresses and favorites by GPS,
   await page.goForward();
   await page.getByRole('button', { name: 'Find my next meal', exact: true }).click();
   await page.getByRole('button', { name: 'Edit my favorites', exact: true }).click();
-  await page.getByRole('button', { name: 'Back', exact: true }).click();
-  await expect(page.getByRole('heading', { name: /What do you love about Fixture Noodle House/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your taste preferences', exact: true })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Signup progress' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Fixture Noodle House', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'What matters most right now?', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back to exploring', exact: true }).click();
   await expect(page.getByRole('complementary', { name: 'Your first search' })).toBeVisible();
   await page.getByRole('button', { name: 'Start search', exact: true }).click();
