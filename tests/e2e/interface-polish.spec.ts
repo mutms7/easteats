@@ -6,6 +6,8 @@ test('playback icons and button size stay consistent through pause, play, and re
   await page.goto('/');
   const controls = page.getByRole('group', { name: 'Introduction playback controls' });
   await expect(controls).toHaveCSS('border-top-width', '0px');
+  // The walkthrough sits below the promo hero and starts once it is scrolled into view.
+  await page.getByRole('region', { name: 'East Eats product demo' }).scrollIntoViewIfNeeded();
   const button = controls.getByRole('button');
   const sizes: number[][] = [];
   for (const state of ['Pause introduction', 'Play introduction', 'Pause introduction']) {

@@ -138,3 +138,11 @@
 @media(max-width:700px){.homepage-demo .hd-favorites .hd-demo-title h3{font-size:26px}.homepage-demo .hd-favorites .hd-demo-title{margin-bottom:8px}.homepage-demo .hd-favorites .hd-search-card{padding:10px}.homepage-demo .hd-favorites .hd-favorite-result{padding:8px 0}.homepage-demo .hd-favorites .hd-choice{font-size:12px;padding:6px 8px}.homepage-demo .hd-favorites .hd-reason-box{padding:10px}.homepage-demo .hd-favorites .hd-search-field{min-height:36px;padding:7px 10px}}
 
 .homepage-demo .hd-player-controls>.button{width:108px;min-width:108px;height:48px;flex:0 0 108px;padding:10px 12px}.homepage-demo .hd-player-controls>.button svg{flex:none}
+/* The walkthrough now lives in its own section under the promo hero. */
+.how-it-works{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,560px);gap:72px;align-items:center;margin-top:56px;padding-top:56px;border-top:1px solid var(--line)}
+.how-it-works-eyebrow{margin:0 0 12px;color:var(--brand);font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.how-it-works h2{margin:0 0 16px;font-size:clamp(2.2rem,3.6vw,3.4rem);font-weight:800;letter-spacing:-.05em;line-height:1.04;color:var(--ink)}
+.how-it-works-intro p:last-child{margin:0;max-width:420px;color:var(--muted);font-size:17px;line-height:1.6}
+.how-it-works .homepage-demo{margin:0;width:100%}
+@media(max-width:1050px){.how-it-works{gap:40px;grid-template-columns:minmax(0,.8fr) minmax(0,1fr)}}
+@media(max-width:700px){.how-it-works{display:flex;flex-direction:column;align-items:stretch;gap:12px;margin-top:36px;padding-top:32px}.how-it-works h2{font-size:2.1rem;margin-bottom:10px}.how-it-works-intro p:last-child{font-size:16px}}

@@ -52,9 +52,11 @@ export default function HomepageDemo({ configured }: { configured: boolean }) {
   const [manualPlay, setManualPlay] = useState(false);
   const [documentVisible, setDocumentVisible] = useState(true);
   const [reduced, setReduced] = useState(false);
+  const [inView, setInView] = useState(false);
   const ended = time >= HOMEPAGE_DEMO_DURATION;
   const scene = homepageDemoScene(time);
-  const running = documentVisible && !paused && !ended;
+  // The walkthrough sits below the promo, so it waits until someone scrolls to it instead of finishing unseen.
+  const running = documentVisible && inView && !paused && !ended;
 
   function replay() {
     setManualPlay(true); moveTo(0);
@@ -76,6 +78,14 @@ export default function HomepageDemo({ configured }: { configured: boolean }) {
     preference.addEventListener('change', updatePreference);
     document.addEventListener('visibilitychange', visibility);
     return () => { preference.removeEventListener('change', updatePreference); document.removeEventListener('visibilitychange', visibility); };
+  }, []);
+
+  useEffect(() => {
+    const element = section.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.35 });
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {

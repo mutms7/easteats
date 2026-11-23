@@ -7,20 +7,28 @@ async function home(page:Page){
  await expect(page.getByRole('link',{name:'Continue with Google',exact:true})).toBeVisible();
  await page.evaluate(()=>document.fonts.ready);
 }
+async function showDemo(page:Page){
+ const demo=page.getByRole('region',{name:'East Eats product demo'});
+ await demo.scrollIntoViewIfNeeded();await expect(demo).toHaveAttribute('data-running','true');return demo;
+}
 async function advanceTo(page:Page,target:number){
  const elapsed=await page.getByRole('region',{name:'East Eats product demo'}).evaluate(element=>-parseFloat((element as HTMLElement).style.getPropertyValue('--demo-delay'))||0);
  await page.clock.runFor(Math.max(0,target-elapsed));
 }
 
 for(const viewport of [{width:375,height:667},{width:390,height:844},{width:1440,height:900}]){
- test(`animation opens above unobstructed sign-in at ${viewport.width}x${viewport.height}${viewport.width===375?' @smoke':''}`,async({page},testInfo)=>{
+ test(`promo opens above unobstructed sign-in and the walkthrough follows at ${viewport.width}x${viewport.height}${viewport.width===375?' @smoke':''}`,async({page},testInfo)=>{
   await page.setViewportSize(viewport);await home(page);
+  const promo=page.getByRole('region',{name:'East Eats promo video'});
   const demo=page.getByRole('region',{name:'East Eats product demo'});
-  await expect(demo).toHaveAttribute('data-running','true');await page.clock.runFor(1200);
+  await expect(promo).toBeVisible();await expect(demo).toHaveAttribute('data-running','false');await page.clock.runFor(1200);
   const google=page.getByRole('link',{name:'Continue with Google',exact:true});
   expect(await google.evaluate(element=>{const box=element.getBoundingClientRect();const top=document.elementFromPoint(box.x+box.width/2,box.y+box.height/2);return box.top>=0&&box.bottom<=innerHeight&&!!top&&element.contains(top);})).toBe(true);
-  const animationBox=await demo.boundingBox(),signInBox=await google.boundingBox();
-  expect(animationBox!.y+animationBox!.height).toBeLessThan(signInBox!.y);expect(animationBox!.y).toBeGreaterThanOrEqual(0);
+  const promoBox=await promo.boundingBox(),signInBox=await google.boundingBox();
+  expect(promoBox!.y+promoBox!.height).toBeLessThan(signInBox!.y);expect(promoBox!.y).toBeGreaterThanOrEqual(0);
+  await showDemo(page);const animationBox=await demo.boundingBox(),signInAfter=await google.boundingBox();
+  expect(animationBox!.y).toBeGreaterThan(signInAfter!.y+signInAfter!.height);
+  await expect(page.getByRole('heading',{level:2,name:'From your favorites to your next one.'})).toBeVisible();
   await expect(page.getByRole('link',{name:'Sign in',exact:true})).toBeVisible();
   await expect(demo.getByRole('button',{name:'Pause introduction'})).toBeVisible();await expect(demo.getByRole('slider',{name:'Introduction playback position'})).toBeVisible();
   await expect(demo.getByText('Watch how East Eats works')).toBeVisible();
@@ -37,7 +45,7 @@ test('the italic train has constant speed, stars fall to three and a half, and p
  const paid:string[]=[];
  await page.route(/\/api\/(discover|taste|geocode|places\/search)(?:\?|$)/,route=>{paid.push(route.request().url());return route.fulfill({json:{}});});
  page.on('request',request=>{if(/api\.(apify|anthropic|maptiler)\.com/.test(request.url()))paid.push(request.url());});
- await home(page);const demo=page.getByRole('region',{name:'East Eats product demo'});
+ await home(page);const demo=await showDemo(page);
  await advanceTo(page,3300);
  await advanceTo(page,5600);await expect(demo).toHaveAttribute('data-scene','reviews');
  const anchor=await demo.locator('.hd-the-best').boundingBox();
@@ -69,7 +77,7 @@ test('the italic train has constant speed, stars fall to three and a half, and p
 
 test('clicking the demo does not pause it; keyboard and reduced-motion controls still work @smoke',async({page})=>{
  await page.setViewportSize({width:375,height:667});await home(page);
- const demo=page.getByRole('region',{name:'East Eats product demo'});
+ const demo=await showDemo(page);
  await demo.focus();await expect(demo).toHaveAttribute('data-running','true');
  await demo.click({position:{x:20,y:20}});await expect(demo).toHaveAttribute('data-running','true');
  await demo.press('Escape');await expect(demo).toHaveAttribute('data-running','false');const paused=await demo.getAttribute('data-time');await page.clock.runFor(700);expect(await demo.getAttribute('data-time')).toBe(paused);
