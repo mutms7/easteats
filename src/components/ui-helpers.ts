@@ -1,3 +1,4 @@
+import { LINK_FAILED_MESSAGE } from '@/lib/account-rules';
 import { formatDistance, type DistanceUnits } from '@/lib/preferences';
 import { tasteInputSchema, type DiscoverResponse, type Favorite, type RankedRestaurant, type Restaurant } from '@/lib/contracts';
 import { parseTasteGoal, type TasteGoal } from '@/lib/taste-goals';
@@ -12,7 +13,7 @@ export const REASONS = ['The food itself', 'Regional dishes', 'Great value', 'Sp
 export function authNotice(search: string): string {
   const params = new URLSearchParams(search);
   if (params.get('auth') === 'setup') return 'Google sign-in is waiting for setup. Please try again after it is connected.';
-  if (params.get('auth') === 'failed' || params.has('error')) return 'Sign-in did not finish. Please try again.';
+  if (params.get('auth') === 'failed' || params.has('error')) return LINK_FAILED_MESSAGE;
   return '';
 }
 export function toggleReason(favorite: Favorite, reason: string): Favorite {

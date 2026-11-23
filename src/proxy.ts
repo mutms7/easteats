@@ -21,4 +21,4 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ['/', '/about', '/privacy', '/delete-account'] };
+export const config = { matcher: ['/', '/about', '/privacy', '/delete-account', '/reset-password'] };

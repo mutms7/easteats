@@ -2,7 +2,7 @@
 
 This directory contains a native Expo SDK 58 / React Native 0.88 client. It is not a WebView wrapper. It uses the production web service at `https://easteats.vercel.app` for authenticated APIs, source jobs and recommendation logic.
 
-Implemented native screens: Google system-browser sign-in, optional native Sign in with Apple, favorites and reasons, five dining priorities, interpreted tastes and corrections, address selection, explicit foreground GPS, progressive discovery, list/map, saved places, encrypted saved offline snapshots, native sharing/directions, and account deletion confirmation. Photos are supplied by real restaurant data; missing photos are labeled. MapLibre uses the same MapTiler service as the website. No Apify or Anthropic key is included in the app.
+Implemented native screens: Google system-browser sign-in, optional native Sign in with Apple, email sign-up, sign-in and password reset (see [../docs/email-accounts.md](../docs/email-accounts.md)), favorites and reasons, five dining priorities, interpreted tastes and corrections, address selection, explicit foreground GPS, progressive discovery, list/map, saved places, encrypted saved offline snapshots, native sharing/directions, and account deletion confirmation. Photos are supplied by real restaurant data; missing photos are labeled. MapLibre uses the same MapTiler service as the website. No Apify or Anthropic key is included in the app.
 
 This is release preparation, not a published or device-verified app. Read [release/STATUS.md](release/STATUS.md) before building or submitting.
 

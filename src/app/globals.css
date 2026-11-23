@@ -207,3 +207,12 @@
 @media(prefers-reduced-motion:reduce){.search-loading-screen,.search-loading-screen.is-leaving,.search-loading-message,.noodle-steam,.noodle-chopsticks,.noodle-strand,.noodle-bowl{animation:none}}
 
 .taste-add-favorite{padding:18px 20px;border:1px solid var(--line);border-radius:14px;margin:24px 0}.taste-add-favorite>summary{cursor:pointer;font-weight:700;min-height:28px}.taste-add-favorite[open]>summary{margin-bottom:20px}.taste-add-favorite .lede{font-size:16px}.taste-add-favorite .search-form{padding:0;border:0;margin:18px 0}
+.email-open{width:100%;min-height:54px;font-size:15px;margin-bottom:12px}
+.email-account{margin:2px 0 14px;text-align:left}.email-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;margin:0 0 14px}.email-divider::before,.email-divider::after{content:"";flex:1;height:1px;background:var(--line)}
+.email-heading{font-size:1.15rem;letter-spacing:-.01em;margin:0 0 14px}.email-account fieldset{border:0;padding:0;margin:0;min-width:0}.email-field{margin-bottom:12px}.email-account label{color:var(--ink);margin-bottom:6px}
+.password-field{position:relative;display:block}.password-field input{padding-right:76px}.password-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%)}
+.email-help{margin:-6px 0 12px;color:var(--muted)}.email-account .message{margin:0 0 12px}.email-submit{width:100%;min-height:52px;font-size:15px}
+.email-switch{margin:10px 0 0;color:var(--muted)}.email-switch .text-button{display:inline;min-height:44px;padding:8px 4px}.email-sent{border:1px solid var(--line);background:var(--soft);border-radius:14px;padding:14px 16px;font-size:14px;line-height:1.6}.email-sent p{margin:0 0 6px}.email-sent .text-button{padding:8px 0}
+.delete-email-sign-in{max-width:380px;margin-top:8px}
+.email-forgot{margin:-4px 0 10px;text-align:right}.email-forgot .text-button{min-height:44px;padding:8px 0}.email-help-intro{color:var(--muted);margin:-6px 0 14px}
+.reset-form{max-width:380px;margin-top:8px}.reset-done:focus,.email-sent:focus{outline:2px solid var(--ink);outline-offset:3px}

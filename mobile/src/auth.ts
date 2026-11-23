@@ -6,6 +6,7 @@ import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { AUTH_REDIRECT, callbackCode } from './policies';
+import type { EmailAuthClient } from './email-auth';
 
 const options = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
 type ChunkIndex = { version: string; count: number };
@@ -60,6 +61,8 @@ const publicUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const publicKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const configured = Boolean(publicUrl?.startsWith('https://') && publicKey?.startsWith('sb_publishable_'));
 export const supabase = configured ? createClient(publicUrl!, publicKey!, { auth: { storage: secureStorage, flowType: 'pkce', persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }) : null;
+// supabase.auth satisfies the small interface the email flows need; null until configured.
+export const emailAuthClient: EmailAuthClient | null = supabase ? supabase.auth : null;
 export function observeAppAuth() {
   const refresh = (state: string) => { if (state === 'active') supabase?.auth.startAutoRefresh(); else supabase?.auth.stopAutoRefresh(); };
   refresh(AppState.currentState ?? 'active');

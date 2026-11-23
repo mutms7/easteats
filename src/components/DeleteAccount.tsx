@@ -2,9 +2,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { goalDraftKey } from './ui-helpers';
+import EmailAccount, { type EmailMode } from './EmailAccount';
 
 export default function DeleteAccount() {
   const [user, setUser] = useState<{id:string;email?:string}|null>(null);
+  const [emailReady, setEmailReady] = useState(false);
+  const [emailMode, setEmailMode] = useState<EmailMode>('closed');
   const [loading, setLoading] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -12,7 +15,7 @@ export default function DeleteAccount() {
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/session', { credentials:'same-origin', signal:controller.signal }).then(async response => { if (!response.ok) throw new Error('We could not check your sign-in. Refresh and try again.'); return response.json(); }).then(data => setUser(data.user)).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'We could not check your sign-in.'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    fetch('/api/session', { credentials:'same-origin', signal:controller.signal }).then(async response => { if (!response.ok) throw new Error('We could not check your sign-in. Refresh and try again.'); return response.json(); }).then(data => { setUser(data.user); setEmailReady(data.providers?.email === true); }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'We could not check your sign-in.'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, []);
   async function remove(event:FormEvent) {
@@ -31,7 +34,7 @@ export default function DeleteAccount() {
   return <>
     {loading && <p role="status">Checking your sign-in...</p>}
     {error && <p role="alert">{error}</p>}
-    {!loading && !user && <p><Link href="/auth/login?next=/delete-account" className="button primary">Sign in to delete your account</Link></p>}
+    {!loading && !user && <><p><Link href="/auth/login?next=/delete-account" className="button primary">Sign in to delete your account</Link></p>{emailReady && <div className="delete-email-sign-in"><EmailAccount mode={emailMode} onModeChange={setEmailMode} openMode="signin" allowSignup={false} next="/delete-account" onSignedIn={() => window.location.reload()} /></div>}</>}
     {user && <form onSubmit={remove}>
       <p>Signed in{user.email ? ` as ${user.email}` : ''}.</p>
       <label className="account-delete-confirm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /><span>I understand this permanently removes my EastEats account, preferences, home address, search history, restaurant opinions, meal choices, and saved places.</span></label>

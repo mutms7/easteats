@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
-export type AccountUser = { id: string; email?: string; name?: string; pendingEmail?: string | null };
+export type AccountUser = { id: string; email?: string; name?: string; pendingEmail?: string | null; provider?: 'email' | 'google' };
 
 export default function AccountDetails({ user, demo, onChange }: { user: AccountUser; demo: boolean; onChange: (user: AccountUser) => void }) {
   const [name, setName] = useState(user.name ?? '');
@@ -28,7 +28,7 @@ export default function AccountDetails({ user, demo, onChange }: { user: Account
     finally { pending.current = false; if (!controller.signal.aborted) setBusy(false); }
   }
   return <section className="account-details" aria-labelledby="account-details-heading"><h2 id="account-details-heading">Personal details</h2>
-    <form onSubmit={save}><fieldset disabled={busy || demo}><label htmlFor="account-name">Name<input id="account-name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} required maxLength={100} /></label><label htmlFor="account-email">Email<input id="account-email" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} aria-describedby="account-email-help" /></label><p className="small" id="account-email-help">Email changes need confirmation. Your Google sign-in stays linked to your Google account.</p><button className="button primary" type="submit">{busy ? 'Saving details…' : 'Save account details'}</button></fieldset></form>
+    <form onSubmit={save}><fieldset disabled={busy || demo}><label htmlFor="account-name">Name<input id="account-name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} required maxLength={100} /></label><label htmlFor="account-email">Email<input id="account-email" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} aria-describedby="account-email-help" /></label><p className="small" id="account-email-help">{user.provider === 'email' ? 'Email changes need confirmation. You’ll sign in with the new email once it’s confirmed.' : 'Email changes need confirmation. Your Google sign-in stays linked to your Google account.'}</p><button className="button primary" type="submit">{busy ? 'Saving details…' : 'Save account details'}</button></fieldset></form>
     {demo && <p className="small">Account details are read-only in the demo.</p>}
     {user.pendingEmail && <p className="small">Waiting for email confirmation: {user.pendingEmail}</p>}
     {error && <p className="home-address-error" role="alert">{error}</p>}{message && <p className="small" role="status">{message}</p>}
