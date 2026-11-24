@@ -26,11 +26,16 @@ async function finish(page: Page) {
 async function expectOnBakedPill(page: Page) {
   const cta = page.getByRole('link', { name: 'Try East Eats free' });
   await expect(cta).toBeVisible();
-  const frame = await page.locator('.promo-media').boundingBox(), box = await cta.boundingBox();
-  expect(Math.abs(box!.x - (frame!.x + frame!.width * BAKED.x))).toBeLessThan(1.5);
-  expect(Math.abs(box!.y - (frame!.y + frame!.height * BAKED.y))).toBeLessThan(1.5);
-  expect(Math.abs(box!.width - frame!.width * BAKED.w)).toBeLessThan(1.5);
-  expect(Math.abs(box!.height - frame!.height * BAKED.h)).toBeLessThan(1.5);
+  const media = await page.locator('.promo-media').boundingBox(), box = await cta.boundingBox();
+  // object-fit: cover may crop the sides (phones show a square); work out where the full 16:9 picture is drawn.
+  const width = Math.max(media!.width, media!.height * 16 / 9), height = width * 9 / 16;
+  const frame = { x: media!.x + (media!.width - width) / 2, y: media!.y + (media!.height - height) / 2, width, height };
+  expect(Math.abs(box!.x - (frame.x + frame.width * BAKED.x))).toBeLessThan(1.5);
+  expect(Math.abs(box!.y - (frame.y + frame.height * BAKED.y))).toBeLessThan(1.5);
+  expect(Math.abs(box!.width - frame.width * BAKED.w)).toBeLessThan(1.5);
+  expect(Math.abs(box!.height - frame.height * BAKED.h)).toBeLessThan(1.5);
+  // The whole button stays inside the visible frame.
+  expect(box!.x).toBeGreaterThanOrEqual(media!.x);expect(box!.x + box!.width).toBeLessThanOrEqual(media!.x + media!.width);
   expect(await cta.evaluate(element => { const r = element.getBoundingClientRect(); return element.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })).toBe(true);
   return cta;
 }

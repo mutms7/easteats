@@ -12,17 +12,17 @@ The two WebP photographs are available under the [Unsplash License](https://unsp
 
 ## Sign-in carousel
 
-Food inspiration only, these photographs don't represent recommended restaurants. Downloaded as local 1200px WebP images from Unsplash on November 3, 2026.
+Food inspiration only, these photographs don't represent recommended restaurants. Supplied by the project owner as chat attachments on November 23, 2026, replacing the earlier Unsplash set. Photographers and sources weren't provided, so no license is inferred for them.
 
-| Asset | Original source |
-| --- | --- |
-| cravings/ramen.webp | [Kouji Tsuru, ramen](https://unsplash.com/photos/a-bowl-of-ramen-with-an-egg-on-top-wzsOpOtcuNI) |
-| cravings/chicken.webp | [Korean fried chicken photo](https://images.unsplash.com/photo-1645371958635-88dd6c8e1be7), found in [Unsplash's chicken collection](https://unsplash.com/s/photos/korean-fried-chicken) |
-| cravings/sushi.webp | [Salmon nigiri lifted with chopsticks](https://unsplash.com/photos/a-person-holding-a-piece-of-sushi-with-chopsticks-WdodX3Giv2w) |
-| cravings/bibimbap.webp | [Bibimbap with fried egg](https://unsplash.com/photos/a-table-topped-with-bowls-of-food-and-chopsticks--UUkXJIXgy4) |
-| cravings/bao.webp | [Stefan Hiienurm, bao bun](https://unsplash.com/photos/a-hand-holding-a-sandwich-0ny6PUEF3ng) |
+| Asset | Dish | Processing |
+| --- | --- | --- |
+| cravings/sushi-roll.webp | Sushi | Full frame, re-encoded as WebP. The original carries a justonecookbook.com watermark, which suggests it comes from that site. |
+| cravings/korean-fried-chicken.webp | Korean fried chicken | Cropped to 3:2 around the plate. |
+| cravings/soup-dumplings.webp | Soup dumplings | Supplied as a replacement on November 23, 2026. Cropped from 4:3 to 3:2 around the spoon, resized to 1440px wide. |
+| cravings/bibimbap.webp | Bibimbap | Full frame, resized to 1440px wide. |
+| cravings/shoyu-ramen.webp | Japanese ramen | Cropped in on the bowl. |
+| cravings/chow-mein.webp | Chow mein | Cropped to remove the non-black table and clothing edges, framed so the food sits a little higher. |
 
-The carousel also uses the existing Charles Chen dumplings photograph credited above. The original supplied ramen-home.png is retained in the project but isn't shown in the carousel.
-
+Every crop is 3:2 so the carousel shows the whole picture without further cropping. No generative editing was applied. The dumplings photograph credited above is no longer shown in the carousel.
 
 Tutorial click cue: original arrow pointer, animated with a CSS tap and ripple.

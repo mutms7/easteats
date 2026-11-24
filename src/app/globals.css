@@ -127,22 +127,6 @@
 .option-toggle input{appearance:auto;width:22px;height:22px;min-height:22px;flex:0 0 22px;margin:0;accent-color:var(--brand)}
 .options-form>.small{margin-top:20px}
 @media(max-width:560px){.options-access,.options-access+.account-access{padding:10px 12px;font-size:13px}.site-header:has(.options-access){flex-wrap:wrap}.site-header:has(.options-access) .wordmark{margin-right:auto}.options-access{margin-left:0}.radius-control select{font-size:16px}.custom-radius input{font-size:16px}}
-/* Sign-in food carousel */
-.food-carousel-window{position:relative;isolation:isolate;height:100%;overflow:hidden;border-radius:28px;background:var(--ink)}
-.food-carousel-track{height:100%;display:flex;flex-direction:column;animation:food-scroll-up 60s linear infinite;will-change:transform}
-.food-slide{position:relative;flex:0 0 100%;min-height:0;overflow:hidden;pointer-events:none}
-.food-slide img{object-fit:cover;object-position:center}
-.food-carousel-shade{position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(180deg,transparent 45%,rgba(0,0,0,.78) 100%)}
-.food-carousel-caption{position:absolute;left:28px;right:24px;bottom:84px;z-index:3;color:white;pointer-events:none}
-.food-carousel-caption span{font-size:12px;font-weight:500;letter-spacing:.02em}
-.food-carousel-caption p{font-size:clamp(24px,2.6vw,36px);font-weight:750;letter-spacing:-.035em;line-height:1.15;margin:6px 0 0;text-wrap:balance}
-.food-carousel-controls{position:absolute;right:24px;bottom:20px;z-index:3;display:flex;justify-content:flex-end;color:white}
-.food-carousel-controls button{display:grid;place-items:center;width:44px;height:44px;flex-shrink:0;border:1px solid rgba(255,255,255,.5);border-radius:50%;background:rgba(0,0,0,.48);color:white;transition:background-color .15s}
-.food-carousel-controls button:hover{background:rgba(255,255,255,.2)}
-.food-carousel-controls button:focus-visible{outline-color:white;outline-offset:3px}
-@keyframes food-scroll-up{from{transform:translateY(0)}to{transform:translateY(-600%)}}
-@media(max-width:700px){.food-carousel-window{border-radius:20px}.food-carousel-caption{left:20px;bottom:74px}.food-carousel-caption p{font-size:26px}.food-carousel-controls{left:20px;right:16px;bottom:14px}.food-slide img{object-position:center 48%}}
-@media(prefers-reduced-motion:reduce){.food-carousel-track{animation:none;transform:none;will-change:auto}.food-carousel-controls button{transition:none}}
 .quiz-progress{width:100%;height:6px;accent-color:var(--brand);margin:0 0 24px}
 .quiz-heading:focus{outline:none}
 .quiz-navigation{margin-top:28px;padding-top:20px;border-top:1px solid var(--line)}

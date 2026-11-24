@@ -1,12 +1,16 @@
-.promo-video{margin:0 0 22px}
-.promo-frame{position:relative;aspect-ratio:16/9;width:100%;overflow:hidden;border-radius:var(--radius);border:1px solid var(--line);background:#fff;container-type:inline-size;isolation:isolate}
-.promo-media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+/* The promo fills almost the whole first screen: as wide as the window allows while the full 16:9 frame still fits under the header. */
+.app-shell[data-stage=login]{overflow-x:clip;container:page / inline-size}
+.promo-video{--promo-w:min(100cqw - 48px,(100svh - 132px) * 16 / 9);width:var(--promo-w);margin:0 0 28px calc(50% - var(--promo-w) / 2)}
+.promo-frame{position:relative;aspect-ratio:16/9;width:100%;overflow:hidden;border-radius:var(--radius);background:#fff;container-type:inline-size;isolation:isolate;--k:1}
+/* Overdraw by a pixel: at fractional sizes Chrome can leave a hairline seam where the video layer meets the frame edge. */
+.promo-media{position:absolute;inset:-1px;width:calc(100% + 2px);height:calc(100% + 2px);object-fit:cover;display:block}
 
-/* Sits exactly on the pill baked into the end card (measured from the 1280x720 master: 491-788 x 455-520). */
-.promo-cta{position:absolute;left:38.36%;top:63.19%;width:23.28%;height:9.17%;z-index:2;display:flex;align-items:center;justify-content:center;gap:.94cqw;
-  border-radius:999px;background:var(--brand);color:#fff;font-family:var(--font-ui),Arial,sans-serif;font-size:1.875cqw;font-weight:700;letter-spacing:0;line-height:1;white-space:nowrap;text-decoration:none;
-  box-shadow:0 .94cqw 2.2cqw rgba(225,45,18,.28);animation:promo-cta-in .35s ease-out both;transition:background-color .15s,transform .15s}
-.promo-cta svg{width:1.72cqw;height:1.72cqw;flex:none}
+/* Sits exactly on the pill baked into the end card (measured from the 1280x720 master: 491-788 x 455-520).
+   --k is how much wider the full video is than the frame, so the same numbers still land on the pill when phones crop the sides. */
+.promo-cta{position:absolute;left:calc(50% - 11.64% * var(--k));top:63.19%;width:calc(23.28% * var(--k));height:9.17%;z-index:2;display:flex;align-items:center;justify-content:center;gap:calc(.94cqw * var(--k));
+  border-radius:999px;background:var(--brand);color:#fff;font-family:var(--font-ui),Arial,sans-serif;font-size:calc(1.875cqw * var(--k));font-weight:700;letter-spacing:0;line-height:1;white-space:nowrap;text-decoration:none;
+  box-shadow:0 calc(.94cqw * var(--k)) calc(2.2cqw * var(--k)) rgba(225,45,18,.28);animation:promo-cta-in .35s ease-out both;transition:background-color .15s,transform .15s}
+.promo-cta svg{width:calc(1.72cqw * var(--k));height:calc(1.72cqw * var(--k));flex:none}
 /* Keep a comfortable tap target on phones, where the pill itself is small. */
 .promo-cta::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,140px);height:max(100%,44px);transform:translate(-50%,-50%)}
 .promo-cta:hover{background:var(--brand-hover)}
@@ -23,5 +27,6 @@
 .promo-video[data-state=playing] .promo-control{opacity:.72}
 .promo-video[data-state=playing] .promo-frame:hover .promo-control,.promo-video .promo-control:focus-visible{opacity:1}
 
-@media(max-width:700px){.promo-video{margin:0 0 14px}.promo-frame{border-radius:16px}.promo-controls{right:8px;bottom:8px;gap:6px}.promo-control{width:36px;height:36px}.promo-control svg{width:16px;height:16px}}
+/* Phones get a full-bleed square that crops only the sides; the logo, tagline and button all sit inside the middle 56%. */
+@media(max-width:700px){.app-shell[data-stage=login] .hero-copy{order:0}.promo-video{--promo-w:100cqw;margin:0 0 18px calc(50% - 50cqw)}.promo-frame{aspect-ratio:1/1;--k:1.7778;border-radius:0}.promo-controls{right:8px;bottom:8px;gap:6px}.promo-control{width:36px;height:36px}.promo-control svg{width:16px;height:16px}}
 @media(prefers-reduced-motion:reduce){.promo-cta{animation:none}.promo-cta,.promo-control{transition:none}}

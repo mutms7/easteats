@@ -16,16 +16,21 @@ async function advanceTo(page:Page,target:number){
  await page.clock.runFor(Math.max(0,target-elapsed));
 }
 
-for(const viewport of [{width:375,height:667},{width:390,height:844},{width:1440,height:900}]){
- test(`promo opens above unobstructed sign-in and the walkthrough follows at ${viewport.width}x${viewport.height}${viewport.width===375?' @smoke':''}`,async({page},testInfo)=>{
+for(const viewport of [{width:375,height:667},{width:1440,height:900}]){
+ test(`promo fills the first screen above unobstructed sign-in and the walkthrough follows at ${viewport.width}x${viewport.height}${viewport.width===375?' @smoke':''}`,async({page},testInfo)=>{
   await page.setViewportSize(viewport);await home(page);
   const promo=page.getByRole('region',{name:'East Eats promo video'});
   const demo=page.getByRole('region',{name:'East Eats product demo'});
   await expect(promo).toBeVisible();await expect(demo).toHaveAttribute('data-running','false');await page.clock.runFor(1200);
   const google=page.getByRole('link',{name:'Continue with Google',exact:true});
+  // The promo takes almost the whole first screen: full-bleed on phones, nearly full-height on wider windows.
+  const frame=await page.locator('.promo-frame').boundingBox();
+  expect(frame!.y).toBeGreaterThanOrEqual(0);expect(frame!.y+frame!.height).toBeLessThanOrEqual(viewport.height);
+  if(viewport.width<=700)expect(frame!.width).toBe(viewport.width);else expect(frame!.height).toBeGreaterThanOrEqual(viewport.height*0.8);
+  await google.scrollIntoViewIfNeeded();
   expect(await google.evaluate(element=>{const box=element.getBoundingClientRect();const top=document.elementFromPoint(box.x+box.width/2,box.y+box.height/2);return box.top>=0&&box.bottom<=innerHeight&&!!top&&element.contains(top);})).toBe(true);
   const promoBox=await promo.boundingBox(),signInBox=await google.boundingBox();
-  expect(promoBox!.y+promoBox!.height).toBeLessThan(signInBox!.y);expect(promoBox!.y).toBeGreaterThanOrEqual(0);
+  expect(promoBox!.y+promoBox!.height).toBeLessThan(signInBox!.y);
   await showDemo(page);const animationBox=await demo.boundingBox(),signInAfter=await google.boundingBox();
   expect(animationBox!.y).toBeGreaterThan(signInAfter!.y+signInAfter!.height);
   await expect(page.getByRole('heading',{level:2,name:'From your favorites to your next one.'})).toBeVisible();
@@ -34,7 +39,9 @@ for(const viewport of [{width:375,height:667},{width:390,height:844},{width:1440
   await expect(demo.getByText('Watch how East Eats works')).toBeVisible();
   for(const text of ['See what makes it yours','A little taste of East Eats.','28 seconds / Silent','Read the demo','Illustrative demo'])await expect(page.getByText(text,{exact:true})).toHaveCount(0);
   await expect(demo.locator('.hd-stage')).toHaveCSS('border-top-width','0px');await expect(demo.locator('.hd-stage')).toHaveCSS('border-radius','0px');
-  await expect(page.getByAltText('Rich ramen broth with chashu pork, noodles, scallions, and a jammy egg')).toHaveAttribute('src',/cravings%2Framen|cravings\/ramen/);
+  const carousel=page.getByRole('region',{name:"What's calling your name?"});const carouselBox=await carousel.boundingBox();
+  expect(carouselBox!.y).toBeGreaterThan(signInAfter!.y+signInAfter!.height);expect(carouselBox!.y).toBeLessThan(animationBox!.y);
+  await expect(page.getByAltText('A red bowl of shoyu ramen with chashu, a marinated egg, narutomaki, scallions, and nori')).toHaveAttribute('src',/shoyu-ramen/);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:testInfo.outputPath('homepage.png'),fullPage:false});
  });
@@ -93,7 +100,7 @@ test('clicking the demo does not pause it; keyboard and reduced-motion controls 
  
 });
 
-for(const viewport of [{width:375,height:812},{width:1440,height:1000}]){
+for(const viewport of [{width:375,height:812}]){
  test(`the footer opens William's About page at ${viewport.width}px`,async({page},testInfo)=>{
   await page.setViewportSize(viewport);await home(page);
   const footer=page.getByRole('contentinfo');

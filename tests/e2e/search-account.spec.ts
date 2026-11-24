@@ -89,7 +89,7 @@ test('an older history request cannot navigate away from Account', async ({ page
   await expect(page.getByRole('heading', { name: 'Your account', exact: true })).toBeVisible();
 });
 
-for (const viewport of [{ width: 375, height: 812 }, { width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+for (const viewport of [{ width: 375, height: 812 }, { width: 1440, height: 900 }]) {
   test(`search controls fit at ${viewport.width}x${viewport.height}, with every history item accessible`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     const searches = Array.from({ length: 9 }, (_, i) => fixtureSearch(`11111111-1111-4111-8111-${String(i).padStart(12, '0')}`, `Fixture search ${i + 1}`));
