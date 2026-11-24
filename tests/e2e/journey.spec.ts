@@ -9,7 +9,9 @@ test('phone journey: questionnaire, discovery, saved places, details, reload and
  await page.setViewportSize({width:390,height:844});await page.goto('/');
  await expect(page.getByRole('link',{name:/Continue with Google/})).toBeVisible();
  await expect(page.getByRole('heading',{name:/Where do you/})).toHaveCount(0);
- await page.getByRole('button',{name:'Try the demo'}).click();
+ // Sign-in offers only Google and email; the walkthrough enters through the dev-only test fixture session.
+ await expect(page.getByRole('button',{name:/demo/i})).toHaveCount(0);
+ expect(await page.evaluate(async()=>(await fetch('/api/demo/start',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).ok)).toBe(true);await page.reload();
  await goToQuizStep(page,1);
  await page.getByRole('textbox',{name:'Restaurant name'}).fill('Little Bowl');await page.getByRole('button',{name:'Find restaurant',exact:true}).click();
  await page.getByRole('button',{name:'Add favorite',exact:true}).click();
