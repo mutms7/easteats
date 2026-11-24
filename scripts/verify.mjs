@@ -8,8 +8,8 @@ for(const scope of scopes){
  const dir=join('tests',scope);
  if(!existsSync(dir)||!readdirSync(dir,{recursive:true}).some(p=>String(p).endsWith('.test.ts')))throw new Error(`Missing required ${scope} tests`);
 }
-function run(script,args=[]){
- const result=spawnSync(process.execPath,[script,...args],{stdio:'inherit',timeout:180000,env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'}});
+function run(script,args=[],timeout=180000){
+ const result=spawnSync(process.execPath,[script,...args],{stdio:'inherit',timeout,env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'}});
  if(result.error)throw result.error;if(result.status!==0)process.exit(result.status||1);
 }
 run('node_modules/vitest/vitest.mjs',['run',...scopes.map(s=>`tests/${s}`)]);
@@ -17,5 +17,6 @@ if(role==='integration'||role==='ci'){
  run('node_modules/typescript/bin/tsc',['--noEmit']);
  run('node_modules/next/dist/bin/next',['build']);
  // Keep routine CI small; release verification retains every browser journey.
- run('node_modules/@playwright/test/cli.js',['test',...(role==='ci'?['--grep','@smoke']:[])]);
+ // The full browser suite runs close to three minutes on a GitHub runner, so give it room; each test keeps its own 45s limit.
+ run('node_modules/@playwright/test/cli.js',['test',...(role==='ci'?['--grep','@smoke']:[])],480000);
 }
